@@ -8,6 +8,8 @@ from telegram.ext import (
 )
 
 import help_texts
+from reservations import DB_CONNECTION, DB_CURSOR, add_reservation, show_reservations_per_time, Reservation
+
 
 load_dotenv()
 
@@ -22,15 +24,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 GUEST_NAME, DATE_TIME, MORE_INFO, END = range(4)
-
-
-#временный словарь под данные резерва для дебага
-RESERVE_DICT = {
-    'name': '',
-    'time': '',
-    'more_info': '',
-    'who_added': '',
-}
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -51,6 +44,7 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def addreserve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начинает диалог о записи резерва и спрашивает имя гостя"""
+    context.user_data['reservation'] = Reservation()
     await update.message.reply_text(
         help_texts.RESERVER_ADDITION_START + help_texts.RESERVER_ADDITION_GUEST_NAME,
         reply_markup=ReplyKeyboardRemove()
@@ -60,7 +54,7 @@ async def addreserve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def guest_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Записывает имя гостя и запрашивает дату и время визита"""
-    RESERVE_DICT['name'] = update.message.text
+    context.user_data['reservation'].guest_name = update.message.text
     await update.message.reply_text(
         help_texts.RESERVER_ADDITION_TIME,
         reply_markup=ReplyKeyboardRemove()
@@ -70,7 +64,7 @@ async def guest_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def date_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Записывает дату и время визита и запрашивает дополнительную информацию"""
-    RESERVE_DICT['time'] = update.message.text
+    context.user_data['reservation'].datetime = update.message.text
     await update.message.reply_text(
         help_texts.RESERVER_ADDITION_MORE_INFO,
         reply_markup=ReplyKeyboardRemove()
@@ -81,28 +75,27 @@ async def date_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def more_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Записывает дополнительную информацию.
     Выводит собраную информацию о брони с возможностью подтвердить / изменить / отменить запись"""
-    RESERVE_DICT['more_info'] = update.message.text
+    context.user_data['reservation'].info = update.message.text
     reply_keyboard = [['Сохранить', 'Изменить', 'Отмена']]
-    
+
     await update.message.reply_text(
         help_texts.RESERVER_ADDITION_SAVE_EDIT_DELETE + 'Бронь:',
         reply_markup=ReplyKeyboardRemove(),
     )
     await update.message.reply_text(
-        RESERVE_DICT,
+        context.user_data['reservation'].__repr__(),
         reply_markup=ReplyKeyboardMarkup(
             reply_keyboard, one_time_keyboard=True, input_field_placeholder='Шо делаем?'
         ),
     )
-
-    #здесь(?) должно быть условие на сохранить/изменить/отменить
     return END
 
 
 async def end_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Сохраняет запись и заканчивает сбор данных"""
-    RESERVE_DICT['who_added'] = update.effective_user.name
-    logger.info(f'Бронь сохранена: {RESERVE_DICT}')
+    context.user_data['reservation'].user_added = update.effective_user.name
+    add_reservation(context.user_data['reservation'])
+    logger.info('Бронь сохранена.')
     await update.message.reply_text(
         help_texts.RESERVER_ADDITION_END_SAVE,
         reply_markup=ReplyKeyboardRemove()
