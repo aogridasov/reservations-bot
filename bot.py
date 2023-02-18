@@ -1,10 +1,11 @@
 import logging
 import os
 
+from typing import List
 from dotenv.main import load_dotenv
-from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (ApplicationBuilder, CommandHandler, ContextTypes,
-                          ConversationHandler, MessageHandler, filters)
+                          ConversationHandler, MessageHandler, filters, CallbackQueryHandler)
 
 import help_texts
 from reservations import (DB_CONNECTION, DB_CURSOR, Reservation,
@@ -30,7 +31,7 @@ async def send_message(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     msg_text,
-    reply_markup=None
+    reply_markup=ReplyKeyboardRemove()
 ):
     """Шорткат для отправки сообщения"""
     await context.bot.send_message(
@@ -38,6 +39,40 @@ async def send_message(
         text=msg_text,
         reply_markup=reply_markup
     )
+
+
+async def reservations_to_messages(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    reservations: List[Reservation]
+) -> None:
+    """Функция принимает список с резервами и отправляет сообщение
+     за каждый из элементов, добавляя к ним кнопки."""
+    keyboard = [
+        [InlineKeyboardButton('Гости пришли', callback_data='1')],
+        [
+            InlineKeyboardButton('Удалить бронь', callback_data='2'),
+            InlineKeyboardButton('Изменить бронь', callback_data='3'),
+        ],
+    ]
+    for reservation in reservations:
+        await send_message(
+            update,
+            context,
+            reservation.reserve_card(),
+            InlineKeyboardMarkup(keyboard)
+            )
+
+
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Parses the CallbackQuery and updates the message text."""
+    query = update.callback_query
+
+    # CallbackQueries need to be answered, even if no notification to the user is needed
+    # Some clients may have trouble otherwise. See https://core.telegram.org/bots/api#callbackquery
+    await query.answer()
+
+    await query.edit_message_text(text=f"Selected option: {query.data}")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -53,27 +88,21 @@ async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def allreserves(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает команду /allreserves. Выводит резервы за ВСЁ время. ДЛЯ ДЕБАГУ"""
     reservations = show_reservations_all()
-    for reservation in reservations:
-        await send_message(update, context, reservation.reserve_card())
+    await reservations_to_messages(update, context, reservations)
 
 
 async def todayreserves(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает команду /todayreserves. Выводит резервы на текущий день"""
     reservations = show_reservations_today()
-    for reservation in reservations:
-        await send_message(update, context, reservation.reserve_card())
+    await reservations_to_messages(update, context, reservations)
 
 
 async def addreserve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начинает диалог о записи резерва и спрашивает имя гостя"""
     context.user_data['reservation'] = Reservation()
-    await update.message.reply_text(
-        help_texts.RESERVER_ADDITION_START + help_texts.RESERVER_ADDITION_GUEST_NAME,
-        reply_markup=ReplyKeyboardRemove()
-    )
-    await update.message.reply_text(
-        help_texts.RESERVER_ADDITION_START + help_texts.RESERVER_ADDITION_GUEST_NAME,
-        reply_markup=ReplyKeyboardRemove()
+    await send_message(update, context, help_texts.RESERVER_ADDITION_START)
+    await send_message(
+        update, context, help_texts.RESERVER_ADDITION_GUEST_NAME
     )
     return GUEST_NAME
 
@@ -81,20 +110,14 @@ async def addreserve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def guest_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Записывает имя гостя и запрашивает дату и время визита"""
     context.user_data['reservation'].guest_name = update.message.text
-    await update.message.reply_text(
-        help_texts.RESERVER_ADDITION_TIME,
-        reply_markup=ReplyKeyboardRemove()
-    )
+    await send_message( update, context, help_texts.RESERVER_ADDITION_TIME)
     return DATE_TIME
 
 
 async def date_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Записывает дату и время визита и запрашивает дополнительную информацию"""
     context.user_data['reservation'].date_time = update.message.text
-    await update.message.reply_text(
-        help_texts.RESERVER_ADDITION_MORE_INFO,
-        reply_markup=ReplyKeyboardRemove()
-    )
+    await send_message(update, context, help_texts.RESERVER_ADDITION_MORE_INFO)
     return MORE_INFO
 
 
@@ -104,15 +127,13 @@ async def more_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['reservation'].info = update.message.text
     reply_keyboard = [['Сохранить', 'Изменить', 'Отмена']]
 
-    await update.message.reply_text(
-        help_texts.RESERVER_ADDITION_SAVE_EDIT_DELETE,
-        reply_markup=ReplyKeyboardRemove(),
-    )
-    await update.message.reply_text(
+    await send_message(update, context, help_texts.RESERVER_ADDITION_SAVE_EDIT_DELETE)
+    await send_message(
+        update, context,
         context.user_data['reservation'].reserve_preview(),
-        reply_markup=ReplyKeyboardMarkup(
+        ReplyKeyboardMarkup(
             reply_keyboard, one_time_keyboard=True, input_field_placeholder='Шо делаем?'
-        ),
+        )
     )
     return END
 
@@ -122,10 +143,7 @@ async def end_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['reservation'].user_added = update.effective_user.name
     add_reservation(context.user_data['reservation'])
     logger.info('Бронь сохранена.')
-    await update.message.reply_text(
-        help_texts.RESERVER_ADDITION_END_SAVE,
-        reply_markup=ReplyKeyboardRemove()
-    )
+    await send_message(update, context, help_texts.RESERVER_ADDITION_END_SAVE)
     return ConversationHandler.END
 
 
@@ -148,6 +166,9 @@ def main() -> None:
     todayreserves_handler = CommandHandler('todayreserves', todayreserves)
     application.add_handler(todayreserves_handler)
 
+    # Добавляем обработку кнопочек
+    application.add_handler(CallbackQueryHandler(button))
+ 
     # Добавляем обработку команды /addreserve
     addreserve_handler = ConversationHandler(
         entry_points=[CommandHandler('addreserve', addreserve)],

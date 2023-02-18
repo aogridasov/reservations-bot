@@ -12,11 +12,11 @@ class Reservation:
     date_time: datetime = None
     info: str = None
     user_added: str = None
-    visited: bool = False
+    visited: int = 0
 
     def visited_to_emoji(self):
         """Превращает булево значение self.visited в эмоджи"""
-        if self.visited is True:
+        if self.visited == 1:
             return '✅'
         return '❌'
 
