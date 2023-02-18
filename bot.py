@@ -1,15 +1,15 @@
-import os
 import logging
+import os
 
 from dotenv.main import load_dotenv
-from telegram import Update, ReplyKeyboardRemove, ReplyKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder, ContextTypes, CommandHandler, MessageHandler, filters, ConversationHandler,
-)
+from telegram import ReplyKeyboardMarkup, ReplyKeyboardRemove, Update
+from telegram.ext import (ApplicationBuilder, CommandHandler, ContextTypes,
+                          ConversationHandler, MessageHandler, filters)
 
 import help_texts
-from reservations import DB_CONNECTION, DB_CURSOR, add_reservation, show_reservations_per_time, Reservation
-
+from reservations import (DB_CONNECTION, DB_CURSOR, Reservation,
+                          add_reservation, show_reservations_all,
+                          show_reservations_today)
 
 load_dotenv()
 
@@ -26,25 +26,51 @@ logger = logging.getLogger(__name__)
 GUEST_NAME, DATE_TIME, MORE_INFO, END = range(4)
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает команду /start"""
+async def send_message(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    msg_text,
+    reply_markup=None
+):
+    """Шорткат для отправки сообщения"""
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=help_texts.GREETINGS
+        text=msg_text,
+        reply_markup=reply_markup
     )
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает команду /start"""
+    await send_message(update, context, help_texts.GREETINGS)
 
 
 async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает команду /help"""
-    await context.bot.send_message(
-        chat_id=update.effective_chat.id,
-        text=help_texts.HELP
-    )
+    await send_message(update, context, help_texts.HELP)
+
+
+async def allreserves(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает команду /allreserves. Выводит резервы за ВСЁ время. ДЛЯ ДЕБАГУ"""
+    reservations = show_reservations_all()
+    for reservation in reservations:
+        await send_message(update, context, reservation.reserve_card())
+
+
+async def todayreserves(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает команду /todayreserves. Выводит резервы на текущий день"""
+    reservations = show_reservations_today()
+    for reservation in reservations:
+        await send_message(update, context, reservation.reserve_card())
 
 
 async def addreserve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начинает диалог о записи резерва и спрашивает имя гостя"""
     context.user_data['reservation'] = Reservation()
+    await update.message.reply_text(
+        help_texts.RESERVER_ADDITION_START + help_texts.RESERVER_ADDITION_GUEST_NAME,
+        reply_markup=ReplyKeyboardRemove()
+    )
     await update.message.reply_text(
         help_texts.RESERVER_ADDITION_START + help_texts.RESERVER_ADDITION_GUEST_NAME,
         reply_markup=ReplyKeyboardRemove()
@@ -64,7 +90,7 @@ async def guest_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def date_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Записывает дату и время визита и запрашивает дополнительную информацию"""
-    context.user_data['reservation'].datetime = update.message.text
+    context.user_data['reservation'].date_time = update.message.text
     await update.message.reply_text(
         help_texts.RESERVER_ADDITION_MORE_INFO,
         reply_markup=ReplyKeyboardRemove()
@@ -79,11 +105,11 @@ async def more_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_keyboard = [['Сохранить', 'Изменить', 'Отмена']]
 
     await update.message.reply_text(
-        help_texts.RESERVER_ADDITION_SAVE_EDIT_DELETE + 'Бронь:',
+        help_texts.RESERVER_ADDITION_SAVE_EDIT_DELETE,
         reply_markup=ReplyKeyboardRemove(),
     )
     await update.message.reply_text(
-        context.user_data['reservation'].__repr__(),
+        context.user_data['reservation'].reserve_preview(),
         reply_markup=ReplyKeyboardMarkup(
             reply_keyboard, one_time_keyboard=True, input_field_placeholder='Шо делаем?'
         ),
@@ -113,6 +139,14 @@ def main() -> None:
     # Добавляем обработку команды /help
     help_handler = CommandHandler('help', help)
     application.add_handler(help_handler)
+
+    # Добавляем обработку команды /allreserves
+    allreserves_handler = CommandHandler('allreserves', allreserves)
+    application.add_handler(allreserves_handler)
+
+    # Добавляем обработку команды /todayreserves
+    todayreserves_handler = CommandHandler('todayreserves', todayreserves)
+    application.add_handler(todayreserves_handler)
 
     # Добавляем обработку команды /addreserve
     addreserve_handler = ConversationHandler(
