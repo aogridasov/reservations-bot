@@ -20,6 +20,13 @@ class Reservation:
             return '✅'
         return '❌'
 
+    def visited_on_off(self):
+        """Меняет значение visited на противоположное"""
+        if self.visited == 1:
+            self.visited = 0
+        elif self.visited == 0:
+            self.visited = 1
+
     def reserve_preview(self):
         """Возвращает сокращенную информацию о резерве для превью"""
         preview = """\
@@ -92,12 +99,32 @@ def add_reservation(reservation: Reservation):
 
 def delete_reservation(reservation: Reservation):
     """Функция находит соответствующую строку и удаляет из бд"""
-    pass
+    with DB_CONNECTION:
+        DB_CURSOR.execute(
+            """DELETE FROM reservations
+               WHERE rowid = :id""",
+            {'id': reservation.id}
+        )
 
 
 def edit_reservation(reservation: Reservation):
     """Функция находит соответствующую строку в бд и изменяет её"""
-    pass
+    with DB_CONNECTION:
+        DB_CURSOR.execute(
+            """UPDATE reservations
+               SET guest_name=guest_name,
+               date_time=strftime('%Y-%m-%d %H:%M', :date_time),
+               info=:info,
+               visited=:visited
+               WHERE rowid = :id""",
+            {
+                'id': reservation.id,
+                'guest_name': reservation.guest_name,
+                'date_time': reservation.date_time,
+                'info': reservation.info,
+                'visited': reservation.visited,
+            }
+        )
 
 
 def show_reservations_all():

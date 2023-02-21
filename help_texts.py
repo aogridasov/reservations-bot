@@ -15,3 +15,5 @@ RESERVER_ADDITION_MORE_INFO = 'Предоставьте дополнительн
 
 RESERVER_ADDITION_SAVE_EDIT_DELETE = 'Вы собираетесь сохранить бронирование:'
 RESERVER_ADDITION_END_SAVE = 'Запись успешно сохранена!'
+
+CARD_BUTTONS_ERROR_MSG = 'Что-то пошло не так! Вызовите сообщение об этом резерве заново и повторите попытку!'
