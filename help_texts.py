@@ -17,3 +17,5 @@ RESERVER_ADDITION_SAVE_EDIT_DELETE = 'Вы собираетесь сохрани
 RESERVER_ADDITION_END_SAVE = 'Запись успешно сохранена!'
 
 CARD_BUTTONS_ERROR_MSG = 'Что-то пошло не так! Вызовите сообщение об этом резерве заново и повторите попытку!'
+
+RESERVE_EDITING_CHOICE = 'Что меняем?'

@@ -1,12 +1,14 @@
+import json
 import sqlite3
 import textwrap
 from dataclasses import dataclass
 from datetime import datetime
+from typing import List
 
 
 @dataclass
 class Reservation:
-    # Класс для объкетов бронирования
+    """Класс для бронирований"""
     id: int = None
     guest_name: str = None
     date_time: datetime = None
@@ -58,11 +60,24 @@ class Reservation:
         )
         return textwrap.dedent(card)
 
+    def to_json(self):
+        """Возвращает информацию о бронировании в JSON формате"""
+        return json.dumps(
+            self,
+            default=lambda o: o.__dict__,
+            sort_keys=True, indent=4
+        )
 
-def parse_db_to_reservation_class(list: list) -> list:
+    @classmethod
+    def from_json(cls, json_obj):
+        """Создаёт экземпляр класса на основании полученного JSON объекта"""
+        return cls.__init__(**json.loads(json_obj))
+
+
+def parse_db_to_reservation_class(reservations_list: List) -> List:
     """Принимает список с данными из бд и парсит в список классов Reservation"""
     reservations = []
-    for line in list:
+    for line in reservations_list:
         parsed_line = dict(line)
         reservations.append(
             Reservation(
@@ -112,7 +127,8 @@ def edit_reservation(reservation: Reservation):
     with DB_CONNECTION:
         DB_CURSOR.execute(
             """UPDATE reservations
-               SET guest_name=guest_name,
+               SET 
+               guest_name=:guest_name,
                date_time=strftime('%Y-%m-%d %H:%M', :date_time),
                info=:info,
                visited=:visited
