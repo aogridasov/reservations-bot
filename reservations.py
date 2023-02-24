@@ -6,6 +6,11 @@ from datetime import datetime
 from typing import List
 
 
+DB_CONNECTION = sqlite3.connect('reservations.db')
+DB_CONNECTION.row_factory = sqlite3.Row
+DB_CURSOR = DB_CONNECTION.cursor()
+
+
 @dataclass
 class Reservation:
     """Класс для бронирований"""
@@ -92,11 +97,6 @@ def parse_db_to_reservation_class(reservations_list: List) -> List:
     return reservations
 
 
-DB_CONNECTION = sqlite3.connect('reservations.db')
-DB_CONNECTION.row_factory = sqlite3.Row
-DB_CURSOR = DB_CONNECTION.cursor()
-
-
 def add_reservation(reservation: Reservation):
     """Функция записывает данные резерва из объекта класса Reservation в базу данных"""
     with DB_CONNECTION:
@@ -157,3 +157,19 @@ def show_reservations_today():
         "SELECT rowid, * FROM reservations WHERE date(date_time) = date('now')",
     )
     return parse_db_to_reservation_class(DB_CURSOR.fetchall())
+
+
+def add_chat_id(chat_id: int):
+    """Функция записывает id чата в базу данных"""
+    with DB_CONNECTION:
+        DB_CURSOR.execute(
+            "INSERT INTO chats VALUES (:id)", {'id': chat_id}
+        )
+
+
+def get_chat_id_list() -> List[int]:
+    """Функция выводит из бд ID всех чатов, с которыми общается бот"""
+    DB_CURSOR.execute(
+        "SELECT id, * FROM chats",
+    )
+    return [dict(chat_id)['id'] for chat_id in DB_CURSOR.fetchall()]

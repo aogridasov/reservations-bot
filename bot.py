@@ -1,21 +1,18 @@
 import logging
 import os
-from typing import List, Dict
-from uuid import uuid4
+from typing import Dict, List
 
 from dotenv.main import load_dotenv
 from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
-                      InlineQueryResultArticle, InputTextMessageContent,
                       ReplyKeyboardMarkup, ReplyKeyboardRemove, Update)
 from telegram.ext import (ApplicationBuilder, CallbackQueryHandler,
                           CommandHandler, ContextTypes, ConversationHandler,
-                          InlineQueryHandler, MessageHandler, filters)
+                          MessageHandler, filters)
 
 import help_texts
-from reservations import (DB_CONNECTION, DB_CURSOR, Reservation,
-                          add_reservation, delete_reservation,
+from reservations import (Reservation, add_reservation, delete_reservation,
                           edit_reservation, show_reservations_all,
-                          show_reservations_today)
+                          show_reservations_today, add_chat_id, get_chat_id_list)
 
 load_dotenv()
 
@@ -44,19 +41,67 @@ RESERVE_CARD_KEYBOARD = [
     ]
 
 
+# базовая клавиатура с командами бота
+BASE_KEYBOARD = [
+    [help_texts.NEW_RESERVE_BUTTON],
+    [help_texts.TODAY_RESERVES_BUTTON, help_texts.ALL_RESERVES_BUTTON],
+    [help_texts.HELP_BUTTON]
+]
+
+
 async def send_message(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     msg_text: str,
     reply_markup=ReplyKeyboardRemove(),
-    reservation=None
 ):
-    """Шорткат для отправки сообщения"""
-    await context.bot.send_message(
+    """Шорткат для отправки сообщения в текущий чат"""
+    return await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=msg_text,
         reply_markup=reply_markup,
     )
+
+
+async def notify_all_users(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    msg_text: str):
+    """Функция отправляет всем пользователям бота сообщение с переданной информацией"""
+    for chat_id in get_chat_id_list():
+        if chat_id == update.effective_chat.id:
+            pass
+        else:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=msg_text,
+                reply_markup=None
+            )
+    await send_message(update, context, help_texts.NOTIFY_ALL_CONFIRMATION, reply_markup=None)
+
+
+async def keyboard_off(update: Update):
+    """Шорткат для удаления клавиатуры у текущего сообщения"""
+    await update.callback_query.edit_message_text(
+        text=update.effective_message.text,
+    )
+
+
+async def create_update_msg_reservation_link(
+    msg_id: int,
+    reservation: Reservation,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    """Шорткат для обновления связки сообщение-объект резерва или добавления новой"""
+    context.chat_data['msg_reservation'].update({msg_id: reservation})
+
+
+async def get_reservation_from_msg(
+    msg_id: int,
+    context: ContextTypes.DEFAULT_TYPE
+):
+    """Шорткат для получения объекта резерва по id сообщения"""
+    return context.chat_data['msg_reservation'][msg_id]
 
 
 async def reservations_to_messages(
@@ -67,14 +112,14 @@ async def reservations_to_messages(
     """Функция принимает список с резервами и отправляет сообщение
      за каждый из элементов, добавляя к ним кнопки."""
     for reservation in reservations:
-        #context.user_data['reservation'] = reservation
-        await send_message(
+        msg = await send_message(
             update,
             context,
             reservation.reserve_card(),
             InlineKeyboardMarkup(RESERVE_CARD_KEYBOARD),
-            reservation=reservation
             )
+        # словарь для связки объекта резерва с сообщением о нем
+        context.chat_data.setdefault('msg_reservation', {}).update({msg.id: reservation})
 
 
 async def delete_reserve_button(
@@ -83,14 +128,18 @@ async def delete_reserve_button(
 ) -> None:
     """Функция удаляет запись о брони из БД и выводит подтверждение в чат"""
     update.callback_query.answer()
-    #reservation = context.user_data['reservation']
-    reservation = Reservation.from_json(update.message.api_kwargs['reservation'])
+    reservation = await get_reservation_from_msg(update.effective_message.id, context)
     delete_reservation(reservation)
     await update.callback_query.edit_message_text(
         text='ОТМЕНЕНА' + '\n' + reservation.reserve_card()
     )
+    del context.chat_data['msg_reservation'][update.effective_message.id]
     logger.info('\nЗапись удалена:\n{}'.format(reservation.reserve_card()))
-    context.user_data.clear()
+    await notify_all_users(
+        update,
+        context,
+        help_texts.NOTIFY_ALL_DELETE_RESERVE + '\n\n' + reservation.reserve_card()
+    )
     return ConversationHandler.END
 
 
@@ -100,19 +149,23 @@ async def visited_button(
 ) -> None:
     """Функция обновляет информацию о приходе гостей в бд и изменяет карточку резерва"""
     update.callback_query.answer()
-    reservation = context.user_data['reservation']
+    reservation = await get_reservation_from_msg(update.effective_message.id, context)
     reservation.visited_on_off()
     edit_reservation(reservation)
     await update.callback_query.edit_message_text(
         text=reservation.reserve_card(),
         reply_markup=InlineKeyboardMarkup(RESERVE_CARD_KEYBOARD)
     )
+    await create_update_msg_reservation_link(update.effective_message.id, reservation, context)
     logger.info('\nИзменился статус визита:\n{}'.format(reservation.reserve_card()))
     return ConversationHandler.END
 
 
 async def edit_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Функция предлагает параметры резерва, которые можно изменить"""
+    context.user_data['reservation'] = await get_reservation_from_msg(update.effective_message.id, context)
+    # сохраняем id сообщения, из которого запущен процесс редактирования
+    context.user_data['edited_id'] = update.effective_message.id
     keyboard = [
         [InlineKeyboardButton('Имя', callback_data='edit_name')],
         [InlineKeyboardButton('Дата / Время', callback_data='edit_datetime')],
@@ -128,6 +181,7 @@ async def edit_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def edit_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Функция предлагает изменить имя в резерве"""
+    await keyboard_off(update)
     await send_message(
         update,
         context,
@@ -139,6 +193,7 @@ async def edit_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def edit_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Функция предлагает изменить время визита в резерве"""
+    await keyboard_off(update)
     await send_message(
         update,
         context,
@@ -149,6 +204,7 @@ async def edit_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def edit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Функция предлагает изменить детали в резерве"""
+    await keyboard_off(update)
     await send_message(
         update,
         context,
@@ -159,6 +215,7 @@ async def edit_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Сохраняет новую информацию и выводит обновленный резерв"""
+    #узнаем что поменялось и сохраняем
     changed = context.user_data['changed']
     if changed == 'name':
         context.user_data['reservation'].guest_name = update.message.text
@@ -167,17 +224,28 @@ async def edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif changed == 'info':
         context.user_data['reservation'].info = update.message.text
 
+    # получаем измененный резерв
     reservation = context.user_data['reservation']
-
+    # изменяем его в ДБ
     edit_reservation(reservation)
 
     logger.info('\nБронь изменена:\n{}'.format(reservation.reserve_card()))
-    await send_message(update, context, help_texts.RESERVER_ADDITION_END_SAVE)
-    await send_message(update,
+    msg = await send_message(update,
                        context,
                        reservation.reserve_card(),
                        reply_markup=InlineKeyboardMarkup(RESERVE_CARD_KEYBOARD)
     )
+    await send_message(
+        update,
+        context,
+        help_texts.RESERVER_ADDITION_END_SAVE,
+        reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD))
+    await notify_all_users(
+        update,
+        context,
+        help_texts.NOTIFY_ALL_EDIT_RESERVE + f'({changed})' + '\n\n' + reservation.reserve_card()
+    )
+    await create_update_msg_reservation_link(msg.id, reservation, context)
     return ConversationHandler.END
 
 
@@ -201,19 +269,31 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if query.data == 'edit_info':
             await edit_info(update, context)
             return EDIT_INFO
-    except KeyError as err:
-        logger.info(f'!!!!!!!!!!!!!OSHIBKA:{err}')
+    except KeyError:
         await send_message(update, context, help_texts.CARD_BUTTONS_ERROR_MSG)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает команду /start"""
-    await send_message(update, context, help_texts.GREETINGS)
+    current_chat_id = update.effective_chat.id
+    if current_chat_id not in get_chat_id_list():
+        add_chat_id(current_chat_id)
+    await send_message(
+        update,
+        context,
+        help_texts.GREETINGS,
+        reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD)
+    )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает команду /help"""
-    await send_message(update, context, help_texts.HELP)
+    await send_message(
+        update,
+        context,
+        help_texts.HELP,
+        reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD)
+    )
 
 
 async def allreserves(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -228,7 +308,7 @@ async def todayreserves(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def addreserve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начинает диалог о записи резерва и спрашивает имя гостя"""
-    context.user_data['reservation'] = Reservation()
+    context.user_data['new_reservation'] = Reservation()
     await send_message(update, context, help_texts.RESERVER_ADDITION_START)
     await send_message(
         update, context, help_texts.RESERVER_ADDITION_GUEST_NAME
@@ -238,14 +318,14 @@ async def addreserve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def guest_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Записывает имя гостя и запрашивает дату и время визита"""
-    context.user_data['reservation'].guest_name = update.message.text
+    context.user_data['new_reservation'].guest_name = update.message.text
     await send_message( update, context, help_texts.RESERVER_ADDITION_TIME)
     return DATE_TIME
 
 
 async def date_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Записывает дату и время визита и запрашивает дополнительную информацию"""
-    context.user_data['reservation'].date_time = update.message.text
+    context.user_data['new_reservation'].date_time = update.message.text
     await send_message(update, context, help_texts.RESERVER_ADDITION_MORE_INFO)
     return MORE_INFO
 
@@ -253,13 +333,13 @@ async def date_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def more_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Записывает дополнительную информацию.
     Выводит собраную информацию о брони с возможностью подтвердить / отменить запись"""
-    context.user_data['reservation'].info = update.message.text
+    context.user_data['new_reservation'].info = update.message.text
     reply_keyboard = [['Сохранить', 'Отмена']]
 
     await send_message(update, context, help_texts.RESERVER_ADDITION_SAVE_EDIT_DELETE)
     await send_message(
         update, context,
-        context.user_data['reservation'].reserve_preview(),
+        context.user_data['new_reservation'].reserve_preview(),
         ReplyKeyboardMarkup(
             reply_keyboard, one_time_keyboard=True, input_field_placeholder='Шо делаем?'
         )
@@ -276,13 +356,22 @@ async def cancel_new_reserve(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def end_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Сохраняет запись и заканчивает сбор данных"""
-    context.user_data['reservation'].user_added = update.effective_user.name
-    reservation = context.user_data['reservation']
+    context.user_data['new_reservation'].user_added = update.effective_user.name
+    reservation = context.user_data['new_reservation']
     add_reservation(reservation)
     logger.info('\nБронь сохранена:\n{}'.format(reservation.reserve_card()))
-    await send_message(update, context, help_texts.RESERVER_ADDITION_END_SAVE)
-    await send_message(update, context, await reservations_to_messages(update, context, [reservation,]))
-    context.user_data.clear()
+    await reservations_to_messages(update, context, [reservation,])
+    await send_message(
+        update,
+        context,
+        help_texts.RESERVER_ADDITION_END_SAVE,
+        reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD))
+    await notify_all_users(
+        update,
+        context,
+        help_texts.NOTIFY_ALL_NEW_RESERVE + '\n\n' + reservation.reserve_card()
+    )
+    del context.user_data['new_reservation']
     return ConversationHandler.END
 
 
@@ -294,20 +383,20 @@ def main() -> None:
     application.add_handler(start_handler)
 
     # Добавляем обработку команды /help
-    help_handler = CommandHandler('help', help_command)
+    help_handler = MessageHandler(filters.Regex(f'^{help_texts.HELP_BUTTON}$'), help_command)
     application.add_handler(help_handler)
 
     # Добавляем обработку команды /allreserves
-    allreserves_handler = CommandHandler('allreserves', allreserves)
+    allreserves_handler = MessageHandler(filters.Regex(f'^{help_texts.ALL_RESERVES_BUTTON}$'), allreserves)
     application.add_handler(allreserves_handler)
 
     # Добавляем обработку команды /todayreserves
-    todayreserves_handler = CommandHandler('todayreserves', todayreserves)
+    todayreserves_handler = MessageHandler(filters.Regex(f'^{help_texts.TODAY_RESERVES_BUTTON}$'), todayreserves)
     application.add_handler(todayreserves_handler)
 
     # Добавляем обработку команды /addreserve
     addreserve_handler = ConversationHandler(
-        entry_points=[CommandHandler('addreserve', addreserve)],
+        entry_points=[MessageHandler(filters.Regex(f'^{help_texts.NEW_RESERVE_BUTTON}$'), addreserve)],
         states={
             GUEST_NAME: [MessageHandler(filters.TEXT, guest_name)],
             DATE_TIME: [MessageHandler(filters.TEXT, date_time)],
