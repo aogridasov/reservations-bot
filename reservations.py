@@ -22,13 +22,19 @@ class Reservation:
     user_added: str = None
     visited: int = 0
 
+
     @staticmethod
     def str_to_datetime(datetime_str: str) -> datetime:
-        """Функция парсит строку в нужном формате в datetime объект"""
+        """Метод парсит строку в нужном формате в datetime объект"""
         datetime_format_validator(datetime_str)
         datetime_obj = datetime.strptime(datetime_str, settings.DATETIME_FORMAT)
         apropriate_datetime_validator(datetime_obj)
         return datetime_obj
+
+    def datetime_to_db_format(self) -> str:
+        """Метод преобразует datetime объект
+        в данные для передачи в соответсвующую колонку БД"""
+        return self.date_time.strftime(settings.DATETIME_DB_FORMAT)
 
     def visited_to_emoji(self):
         """Превращает булево значение self.visited в эмоджи"""
@@ -84,7 +90,7 @@ def parse_db_to_reservation_class(reservations_list: List) -> List:
             Reservation(
                 id=parsed_line['rowid'],
                 guest_name=parsed_line['guest_name'],
-                date_time=datetime.strptime(parsed_line['date_time'], settings.DATETIME_FORMAT),
+                date_time=datetime.strptime(parsed_line['date_time'], settings.DATETIME_DB_FORMAT),
                 info=parsed_line['info'],
                 user_added=parsed_line['user_added'],
                 visited=parsed_line['visited'],
@@ -97,11 +103,10 @@ def add_reservation(reservation: Reservation):
     """Функция записывает данные резерва из объекта класса Reservation в базу данных"""
     with DB_CONNECTION:
         DB_CURSOR.execute(
-            "INSERT INTO reservations VALUES (:guest_name, strftime(:datetime_format, :date_time), :info, :user_added, :visited)",
+            "INSERT INTO reservations VALUES (:guest_name, :date_time, :info, :user_added, :visited)",
             {
                 'guest_name': reservation.guest_name,
-                'datetime_format': settings.DATETIME_FORMAT,
-                'date_time': reservation.date_time,
+                'date_time': reservation.datetime_to_db_format(),
                 'info': reservation.info,
                 'user_added': reservation.user_added,
                 'visited': reservation.visited,
@@ -126,15 +131,14 @@ def edit_reservation(reservation: Reservation):
             """UPDATE reservations
                SET 
                guest_name=:guest_name,
-               date_time=strftime(:datetime_format, :date_time),
+               date_time=:date_time,
                info=:info,
                visited=:visited
                WHERE rowid = :id""",
             {
                 'id': reservation.id,
                 'guest_name': reservation.guest_name,
-                'datetime_format': settings.DATETIME_FORMAT,
-                'date_time': reservation.date_time,
+                'date_time': reservation.datetime_to_db_format(),
                 'info': reservation.info,
                 'visited': reservation.visited,
             }
@@ -142,9 +146,17 @@ def edit_reservation(reservation: Reservation):
 
 
 def show_reservations_all():
-    """Функция выводит ВСЕ резервы. ДЛЯ ДЕБАГУ"""
+    """Функция выводит все БУДУЩИЕ резервы."""
     DB_CURSOR.execute(
-        "SELECT rowid, * FROM reservations"
+        "SELECT rowid, * FROM reservations WHERE date(date_time) >= DATE('now', 'localtime')"
+    )
+    return parse_db_to_reservation_class(DB_CURSOR.fetchall())
+
+
+def show_reservations_archive():
+    """Функция выводит все ПРОШЕДШИЕ резервы."""
+    DB_CURSOR.execute(
+         "SELECT rowid, * FROM reservations WHERE date(date_time) < DATE('now', 'localtime')"
     )
     return parse_db_to_reservation_class(DB_CURSOR.fetchall())
 
@@ -152,9 +164,10 @@ def show_reservations_all():
 def show_reservations_today():
     """Функция выводит строки из бд, где дата соответствует текущей"""
     DB_CURSOR.execute(
-        "SELECT rowid, * FROM reservations WHERE date(date_time) = date('now')",
+        "SELECT rowid, * FROM reservations WHERE date(date_time) = DATE('now', 'localtime')"
     )
-    return parse_db_to_reservation_class(DB_CURSOR.fetchall())
+    results = DB_CURSOR.fetchall()
+    return parse_db_to_reservation_class(results)
 
 
 def add_chat_id(chat_id: int):
@@ -171,3 +184,18 @@ def get_chat_id_list() -> List[int]:
         "SELECT id, * FROM chats",
     )
     return [dict(chat_id)['id'] for chat_id in DB_CURSOR.fetchall()]
+
+#add_reservation(Reservation(guest_name='OLD NEWS', date_time=datetime.strptime('28-01-2021 16:00', settings.DATETIME_FORMAT)))
+
+# with DB_CONNECTION:
+#         DB_CURSOR.execute(
+#             """DELETE FROM reservations
+#                WHERE guest_name = :id""",
+#             {'id': 'Test'}
+#         )
+
+
+# print('OLD')
+# print(show_reservations_archive())
+# print('CURRENT')
+# print(show_reservations_all())

@@ -11,6 +11,7 @@ HELP = """HELP:
 
 # Формат ввода даты и времени
 DATETIME_FORMAT = '%d-%m-%Y %H:%M'
+DATETIME_DB_FORMAT = '%Y-%m-%d %H:%M'
 INVALID_DATETIME_FORMAT_ERROR = """Неверно введены дата или время!
 Пожалуйста используйте следующий формат: {}
 """.format(datetime.now().strftime(DATETIME_FORMAT))
@@ -38,4 +39,8 @@ NOTIFY_ALL_DELETE_RESERVE = 'Бронирование отменена и уда
 NEW_RESERVE_BUTTON = 'Новое бронирование'
 TODAY_RESERVES_BUTTON = 'Бронирования на сегодня'
 ALL_RESERVES_BUTTON = 'Все бронирования'
+ARCHIVE_BUTTON = 'Старые бронирования'
 HELP_BUTTON = 'Справка'
+
+
+NO_INFO_FOUND = 'Ничего не нашлось :('

@@ -7,11 +7,11 @@ from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
                       ReplyKeyboardMarkup, ReplyKeyboardRemove, Update)
 from telegram.ext import (ApplicationBuilder, CallbackQueryHandler,
                           CommandHandler, ContextTypes, ConversationHandler,
-                          MessageHandler, filters)
+                          MessageHandler, filters, ExtBot)
 
 import settings
 from reservations import (Reservation, add_reservation, delete_reservation,
-                          edit_reservation, show_reservations_all,
+                          edit_reservation, show_reservations_all, show_reservations_archive,
                           show_reservations_today, add_chat_id, get_chat_id_list)
 from validators import InvalidDatetimeException
 
@@ -44,8 +44,8 @@ RESERVE_CARD_KEYBOARD = [
 
 # базовая клавиатура с командами бота
 BASE_KEYBOARD = [
-    [settings.NEW_RESERVE_BUTTON],
-    [settings.TODAY_RESERVES_BUTTON, settings.ALL_RESERVES_BUTTON],
+    [settings.NEW_RESERVE_BUTTON, settings.TODAY_RESERVES_BUTTON],
+    [settings.ARCHIVE_BUTTON, settings.ALL_RESERVES_BUTTON],
     [settings.HELP_BUTTON]
 ]
 
@@ -112,15 +112,34 @@ async def reservations_to_messages(
 ) -> None:
     """Функция принимает список с резервами и отправляет сообщение
      за каждый из элементов, добавляя к ним кнопки."""
-    for reservation in reservations:
-        msg = await send_message(
-            update,
-            context,
-            reservation.reserve_card(),
-            InlineKeyboardMarkup(RESERVE_CARD_KEYBOARD),
-            )
-        # словарь для связки объекта резерва с сообщением о нем
-        context.chat_data.setdefault('msg_reservation', {}).update({msg.id: reservation})
+    if len(reservations) == 0:
+        await send_message(update, context, settings.NO_INFO_FOUND, reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD))
+    elif len(reservations) > 5:
+        keyboard = []
+        for reservation in reservations:
+            keyboard.append([
+                InlineKeyboardButton(
+                    reservation.guest_name,
+                    callback_data=reservation
+                )
+            ])
+            
+        await send_message(
+                update,
+                context,
+                'Вот что я нашел:',
+                reply_markup=InlineKeyboardMarkup(keyboard)
+                )
+    else:
+        for reservation in reservations:
+            msg = await send_message(
+                update,
+                context,
+                reservation.reserve_card(),
+                InlineKeyboardMarkup(RESERVE_CARD_KEYBOARD),
+                )
+            # словарь для связки объекта резерва с сообщением о нем
+            context.chat_data.setdefault('msg_reservation', {}).update({msg.id: reservation})
 
 
 async def delete_reserve_button(
@@ -198,7 +217,7 @@ async def edit_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_message(
         update,
         context,
-        'Текущее время визита в резерве: ' + str(context.user_data['reservation'].date_time) + '\n' + 'Отправь мне новое!'
+        'Текущее время визита в резерве: ' + str(context.user_data['reservation'].date_time.strftime(settings.DATETIME_FORMAT)) + '\n' + 'Отправь мне новое!'
     )
     context.user_data['changed'] = 'time'
 
@@ -221,7 +240,11 @@ async def edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if changed == 'name':
         context.user_data['reservation'].guest_name = update.message.text
     elif changed == 'time':
-        context.user_data['reservation'].date_time = update.message.text
+        try:
+            context.user_data['reservation'].date_time = Reservation.str_to_datetime(update.message.text)
+        except InvalidDatetimeException as datetime_validation_error:
+            await send_message(update, context, datetime_validation_error.args[0]) # вот это конечно сильно
+            return EDIT_DATETIME
     elif changed == 'info':
         context.user_data['reservation'].info = update.message.text
 
@@ -270,6 +293,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if query.data == 'edit_info':
             await edit_info(update, context)
             return EDIT_INFO
+        if isinstance(query.data, Reservation):
+            await reservations_to_messages(update, context, [query.data,])
     except KeyError:
         await send_message(update, context, settings.CARD_BUTTONS_ERROR_MSG)
 
@@ -297,8 +322,17 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает команду /cancel"""
+    pass
+
+
+async def archive(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает команду /archive. Выводит резервы раньше текущей даты"""
+    await reservations_to_messages(update, context, show_reservations_archive())
+
 async def allreserves(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает команду /allreserves. Выводит резервы за ВСЁ время. ДЛЯ ДЕБАГУ"""
+    """Обрабатывает команду /allreserves. Выводит резервы позже текущей даты"""
     await reservations_to_messages(update, context, show_reservations_all())
 
 
@@ -381,11 +415,19 @@ async def end_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main() -> None:
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
-
+    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).arbitrary_callback_data(True).build()
+    
     # Добавляем обработку команды /start
     start_handler = CommandHandler('start', start)
     application.add_handler(start_handler)
+    
+    # Добавляем обработку команды /cancel
+    cancel_handler = CommandHandler('cancel', cancel)
+    application.add_handler(cancel_handler)
+    
+    # Добавляем обработку команды /archive
+    archive_handler = MessageHandler(filters.Regex(f'^{settings.ARCHIVE_BUTTON}$'), archive)
+    application.add_handler(archive_handler)
 
     # Добавляем обработку команды /help
     help_handler = MessageHandler(filters.Regex(f'^{settings.HELP_BUTTON}$'), help_command)
