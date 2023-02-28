@@ -10,7 +10,7 @@ HELP = """HELP:
 """
 
 # Формат ввода даты и времени
-DATETIME_FORMAT = '%d-%m-%Y %H:%M'
+DATETIME_FORMAT = '%d.%m.%Y %H:%M'
 DATETIME_DB_FORMAT = '%Y-%m-%d %H:%M'
 INVALID_DATETIME_FORMAT_ERROR = """Неверно введены дата или время!
 Пожалуйста используйте следующий формат: {}

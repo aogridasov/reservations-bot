@@ -79,6 +79,11 @@ class Reservation:
             self.visited_to_emoji(),
         )
         return textwrap.dedent(card)
+    
+    def reserve_line(self):
+        """Возвращает краткую информацию о резерве в виде строки"""
+        line = f'{self.date_time.strftime(settings.DATETIME_FORMAT)} | {self.guest_name}'
+        return line
 
 
 def parse_db_to_reservation_class(reservations_list: List) -> List:
@@ -148,7 +153,7 @@ def edit_reservation(reservation: Reservation):
 def show_reservations_all():
     """Функция выводит все БУДУЩИЕ резервы."""
     DB_CURSOR.execute(
-        "SELECT rowid, * FROM reservations WHERE date(date_time) >= DATE('now', 'localtime')"
+        "SELECT rowid, * FROM reservations WHERE date(date_time) >= DATE('now', 'localtime') ORDER BY date_time"
     )
     return parse_db_to_reservation_class(DB_CURSOR.fetchall())
 
@@ -156,7 +161,7 @@ def show_reservations_all():
 def show_reservations_archive():
     """Функция выводит все ПРОШЕДШИЕ резервы."""
     DB_CURSOR.execute(
-         "SELECT rowid, * FROM reservations WHERE date(date_time) < DATE('now', 'localtime')"
+         "SELECT rowid, * FROM reservations WHERE date(date_time) < DATE('now', 'localtime') ORDER BY date_time"
     )
     return parse_db_to_reservation_class(DB_CURSOR.fetchall())
 
@@ -164,7 +169,7 @@ def show_reservations_archive():
 def show_reservations_today():
     """Функция выводит строки из бд, где дата соответствует текущей"""
     DB_CURSOR.execute(
-        "SELECT rowid, * FROM reservations WHERE date(date_time) = DATE('now', 'localtime')"
+        "SELECT rowid, * FROM reservations WHERE date(date_time) = DATE('now', 'localtime') ORDER BY date_time"
     )
     results = DB_CURSOR.fetchall()
     return parse_db_to_reservation_class(results)
@@ -184,18 +189,3 @@ def get_chat_id_list() -> List[int]:
         "SELECT id, * FROM chats",
     )
     return [dict(chat_id)['id'] for chat_id in DB_CURSOR.fetchall()]
-
-#add_reservation(Reservation(guest_name='OLD NEWS', date_time=datetime.strptime('28-01-2021 16:00', settings.DATETIME_FORMAT)))
-
-# with DB_CONNECTION:
-#         DB_CURSOR.execute(
-#             """DELETE FROM reservations
-#                WHERE guest_name = :id""",
-#             {'id': 'Test'}
-#         )
-
-
-# print('OLD')
-# print(show_reservations_archive())
-# print('CURRENT')
-# print(show_reservations_all())

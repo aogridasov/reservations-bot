@@ -22,10 +22,13 @@ if not TELEGRAM_BOT_TOKEN:
     exit('No TG token found!')
 
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.DEBUG
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler('bot.log'),
+        logging.StreamHandler()
+    ]
 )
-logger = logging.getLogger(__name__)
 
 # states for /addreserve conversation
 GUEST_NAME, DATE_TIME, MORE_INFO, CHOICE, CANCEL, END = range(6)
@@ -119,7 +122,7 @@ async def reservations_to_messages(
         for reservation in reservations:
             keyboard.append([
                 InlineKeyboardButton(
-                    reservation.guest_name,
+                    reservation.reserve_line(),
                     callback_data=reservation
                 )
             ])
@@ -154,7 +157,7 @@ async def delete_reserve_button(
         text='ОТМЕНЕНА' + '\n' + reservation.reserve_card()
     )
     del context.chat_data['msg_reservation'][update.effective_message.id]
-    logger.info('\nЗапись удалена:\n{}'.format(reservation.reserve_card()))
+    logging.info('\nReservation deleted:\n{}'.format(reservation.reserve_line()))
     await notify_all_users(
         update,
         context,
@@ -177,7 +180,7 @@ async def visited_button(
         reply_markup=InlineKeyboardMarkup(RESERVE_CARD_KEYBOARD)
     )
     await create_update_msg_reservation_link(update.effective_message.id, reservation, context)
-    logger.info('\nИзменился статус визита:\n{}'.format(reservation.reserve_card()))
+    logging.info('\nGuests visit status changed:\n{}'.format(reservation.reserve_line()))
     return ConversationHandler.END
 
 
@@ -253,7 +256,7 @@ async def edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # изменяем его в ДБ
     edit_reservation(reservation)
 
-    logger.info('\nБронь изменена:\n{}'.format(reservation.reserve_card()))
+    logging.info('\nReservation info changed:\n{}'.format(reservation.reserve_line()))
     msg = await send_message(update,
                        context,
                        reservation.reserve_card(),
@@ -304,6 +307,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current_chat_id = update.effective_chat.id
     if current_chat_id not in get_chat_id_list():
         add_chat_id(current_chat_id)
+        logging.info(f'New person pressed /start: {update.effective_user.name}')
+
     await send_message(
         update,
         context,
@@ -324,7 +329,13 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает команду /cancel"""
-    pass
+    context.user_data.clear()
+    await send_message(
+        update,
+        context,
+        '🙅‍♂️ Отменил 🙅‍♂️',
+        reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD))
+    return ConversationHandler.END
 
 
 async def archive(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -398,7 +409,7 @@ async def end_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['new_reservation'].user_added = update.effective_user.name
     reservation = context.user_data['new_reservation']
     add_reservation(reservation)
-    logger.info('\nБронь сохранена:\n{}'.format(reservation.reserve_card()))
+    logging.info('\nReservation saved:\n{}'.format(reservation.reserve_line()))
     await reservations_to_messages(update, context, [reservation,])
     await send_message(
         update,
@@ -420,11 +431,7 @@ def main() -> None:
     # Добавляем обработку команды /start
     start_handler = CommandHandler('start', start)
     application.add_handler(start_handler)
-    
-    # Добавляем обработку команды /cancel
-    cancel_handler = CommandHandler('cancel', cancel)
-    application.add_handler(cancel_handler)
-    
+
     # Добавляем обработку команды /archive
     archive_handler = MessageHandler(filters.Regex(f'^{settings.ARCHIVE_BUTTON}$'), archive)
     application.add_handler(archive_handler)
@@ -445,15 +452,15 @@ def main() -> None:
     addreserve_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex(f'^{settings.NEW_RESERVE_BUTTON}$'), addreserve)],
         states={
-            GUEST_NAME: [MessageHandler(filters.TEXT, guest_name)],
-            DATE_TIME: [MessageHandler(filters.TEXT, date_time)],
-            MORE_INFO: [MessageHandler(filters.TEXT, more_info)],
+            GUEST_NAME: [MessageHandler(filters.TEXT & (~ filters.COMMAND), guest_name)],
+            DATE_TIME: [MessageHandler(filters.TEXT & (~ filters.COMMAND), date_time)],
+            MORE_INFO: [MessageHandler(filters.TEXT & (~ filters.COMMAND), more_info)],
             CHOICE: [
                 MessageHandler(filters.Regex('^Сохранить$'), end_save),
                 MessageHandler(filters.Regex('^Отмена$'), cancel_new_reserve),
             ],
         },
-        fallbacks=(),
+        fallbacks=[CommandHandler('cancel', cancel)],
     )
 
     application.add_handler(addreserve_handler)
@@ -464,11 +471,11 @@ def main() -> None:
             CallbackQueryHandler(button),
         ],
         states={
-            EDIT_NAME: [MessageHandler(filters.TEXT, edit_save)],
-            EDIT_DATETIME: [MessageHandler(filters.TEXT, edit_save)],
-            EDIT_INFO: [MessageHandler(filters.TEXT, edit_save)],
+            EDIT_NAME: [MessageHandler(filters.TEXT & (~ filters.COMMAND), edit_save)],
+            EDIT_DATETIME: [MessageHandler(filters.TEXT & (~ filters.COMMAND), edit_save)],
+            EDIT_INFO: [MessageHandler(filters.TEXT & (~ filters.COMMAND), edit_save)],
         },
-        fallbacks=(),
+        fallbacks=[CommandHandler('cancel', cancel)],
     )
 
     application.add_handler(editreserve_handler)
