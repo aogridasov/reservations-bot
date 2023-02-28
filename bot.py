@@ -9,10 +9,11 @@ from telegram.ext import (ApplicationBuilder, CallbackQueryHandler,
                           CommandHandler, ContextTypes, ConversationHandler,
                           MessageHandler, filters)
 
-import help_texts
+import settings
 from reservations import (Reservation, add_reservation, delete_reservation,
                           edit_reservation, show_reservations_all,
                           show_reservations_today, add_chat_id, get_chat_id_list)
+from validators import InvalidDatetimeException
 
 load_dotenv()
 
@@ -43,9 +44,9 @@ RESERVE_CARD_KEYBOARD = [
 
 # базовая клавиатура с командами бота
 BASE_KEYBOARD = [
-    [help_texts.NEW_RESERVE_BUTTON],
-    [help_texts.TODAY_RESERVES_BUTTON, help_texts.ALL_RESERVES_BUTTON],
-    [help_texts.HELP_BUTTON]
+    [settings.NEW_RESERVE_BUTTON],
+    [settings.TODAY_RESERVES_BUTTON, settings.ALL_RESERVES_BUTTON],
+    [settings.HELP_BUTTON]
 ]
 
 
@@ -77,7 +78,7 @@ async def notify_all_users(
                 text=msg_text,
                 reply_markup=None
             )
-    await send_message(update, context, help_texts.NOTIFY_ALL_CONFIRMATION, reply_markup=None)
+    await send_message(update, context, settings.NOTIFY_ALL_CONFIRMATION, reply_markup=None)
 
 
 async def keyboard_off(update: Update):
@@ -138,7 +139,7 @@ async def delete_reserve_button(
     await notify_all_users(
         update,
         context,
-        help_texts.NOTIFY_ALL_DELETE_RESERVE + '\n\n' + reservation.reserve_card()
+        settings.NOTIFY_ALL_DELETE_RESERVE + '\n\n' + reservation.reserve_card()
     )
     return ConversationHandler.END
 
@@ -238,12 +239,12 @@ async def edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_message(
         update,
         context,
-        help_texts.RESERVER_ADDITION_END_SAVE,
+        settings.RESERVER_ADDITION_END_SAVE,
         reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD))
     await notify_all_users(
         update,
         context,
-        help_texts.NOTIFY_ALL_EDIT_RESERVE + f'({changed})' + '\n\n' + reservation.reserve_card()
+        settings.NOTIFY_ALL_EDIT_RESERVE + f'({changed})' + '\n\n' + reservation.reserve_card()
     )
     await create_update_msg_reservation_link(msg.id, reservation, context)
     return ConversationHandler.END
@@ -270,7 +271,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await edit_info(update, context)
             return EDIT_INFO
     except KeyError:
-        await send_message(update, context, help_texts.CARD_BUTTONS_ERROR_MSG)
+        await send_message(update, context, settings.CARD_BUTTONS_ERROR_MSG)
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -281,7 +282,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_message(
         update,
         context,
-        help_texts.GREETINGS,
+        settings.GREETINGS,
         reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD)
     )
 
@@ -291,7 +292,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_message(
         update,
         context,
-        help_texts.HELP,
+        settings.HELP,
         reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD)
     )
 
@@ -309,9 +310,9 @@ async def todayreserves(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def addreserve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Начинает диалог о записи резерва и спрашивает имя гостя"""
     context.user_data['new_reservation'] = Reservation()
-    await send_message(update, context, help_texts.RESERVER_ADDITION_START)
+    await send_message(update, context, settings.RESERVER_ADDITION_START)
     await send_message(
-        update, context, help_texts.RESERVER_ADDITION_GUEST_NAME
+        update, context, settings.RESERVER_ADDITION_GUEST_NAME
     )
     return GUEST_NAME
 
@@ -319,14 +320,18 @@ async def addreserve(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def guest_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Записывает имя гостя и запрашивает дату и время визита"""
     context.user_data['new_reservation'].guest_name = update.message.text
-    await send_message( update, context, help_texts.RESERVER_ADDITION_TIME)
+    await send_message( update, context, settings.RESERVER_ADDITION_TIME)
     return DATE_TIME
 
 
 async def date_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Записывает дату и время визита и запрашивает дополнительную информацию"""
-    context.user_data['new_reservation'].date_time = update.message.text
-    await send_message(update, context, help_texts.RESERVER_ADDITION_MORE_INFO)
+    try:
+        context.user_data['new_reservation'].date_time = Reservation.str_to_datetime(update.message.text)
+    except InvalidDatetimeException as datetime_validation_error:
+        await send_message(update, context, datetime_validation_error.args[0]) # вот это конечно сильно
+        return DATE_TIME
+    await send_message(update, context, settings.RESERVER_ADDITION_MORE_INFO)
     return MORE_INFO
 
 
@@ -336,7 +341,7 @@ async def more_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['new_reservation'].info = update.message.text
     reply_keyboard = [['Сохранить', 'Отмена']]
 
-    await send_message(update, context, help_texts.RESERVER_ADDITION_SAVE_EDIT_DELETE)
+    await send_message(update, context, settings.RESERVER_ADDITION_SAVE_EDIT_DELETE)
     await send_message(
         update, context,
         context.user_data['new_reservation'].reserve_preview(),
@@ -364,12 +369,12 @@ async def end_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_message(
         update,
         context,
-        help_texts.RESERVER_ADDITION_END_SAVE,
+        settings.RESERVER_ADDITION_END_SAVE,
         reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD))
     await notify_all_users(
         update,
         context,
-        help_texts.NOTIFY_ALL_NEW_RESERVE + '\n\n' + reservation.reserve_card()
+        settings.NOTIFY_ALL_NEW_RESERVE + '\n\n' + reservation.reserve_card()
     )
     del context.user_data['new_reservation']
     return ConversationHandler.END
@@ -383,20 +388,20 @@ def main() -> None:
     application.add_handler(start_handler)
 
     # Добавляем обработку команды /help
-    help_handler = MessageHandler(filters.Regex(f'^{help_texts.HELP_BUTTON}$'), help_command)
+    help_handler = MessageHandler(filters.Regex(f'^{settings.HELP_BUTTON}$'), help_command)
     application.add_handler(help_handler)
 
     # Добавляем обработку команды /allreserves
-    allreserves_handler = MessageHandler(filters.Regex(f'^{help_texts.ALL_RESERVES_BUTTON}$'), allreserves)
+    allreserves_handler = MessageHandler(filters.Regex(f'^{settings.ALL_RESERVES_BUTTON}$'), allreserves)
     application.add_handler(allreserves_handler)
 
     # Добавляем обработку команды /todayreserves
-    todayreserves_handler = MessageHandler(filters.Regex(f'^{help_texts.TODAY_RESERVES_BUTTON}$'), todayreserves)
+    todayreserves_handler = MessageHandler(filters.Regex(f'^{settings.TODAY_RESERVES_BUTTON}$'), todayreserves)
     application.add_handler(todayreserves_handler)
 
     # Добавляем обработку команды /addreserve
     addreserve_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(f'^{help_texts.NEW_RESERVE_BUTTON}$'), addreserve)],
+        entry_points=[MessageHandler(filters.Regex(f'^{settings.NEW_RESERVE_BUTTON}$'), addreserve)],
         states={
             GUEST_NAME: [MessageHandler(filters.TEXT, guest_name)],
             DATE_TIME: [MessageHandler(filters.TEXT, date_time)],

@@ -1,3 +1,4 @@
+from datetime import datetime
 GREETINGS = """ Привет!
 
 Здесь будет привественное сообщение с командами бота!
@@ -8,9 +9,16 @@ HELP = """HELP:
 Здесь будут команды и FAQ
 """
 
+# Формат ввода даты и времени
+DATETIME_FORMAT = '%d-%m-%Y %H:%M'
+INVALID_DATETIME_FORMAT_ERROR = """Неверно введены дата или время!
+Пожалуйста используйте следующий формат: {}
+""".format(datetime.now().strftime(DATETIME_FORMAT))
+DATETIME_VALIDATION_FAILED = 'Ой, какая-то странная дата... Введите актуальную!'
+
 RESERVER_ADDITION_START = 'Добавляем новый резерв. '
 RESERVER_ADDITION_GUEST_NAME = 'Укажите имя гостя.'
-RESERVER_ADDITION_TIME = 'Укажите дату и время визита в формате: 1996-10-30 16:00'
+RESERVER_ADDITION_TIME = f'Укажите дату и время визита в формате: {datetime.now().strftime(DATETIME_FORMAT)}'
 RESERVER_ADDITION_MORE_INFO = 'Предоставьте дополнительную информацию. Количество гостей, номер стола, etc'
 
 RESERVER_ADDITION_SAVE_EDIT_DELETE = 'Вы собираетесь сохранить бронирование:'
@@ -27,7 +35,6 @@ NOTIFY_ALL_DELETE_RESERVE = 'Бронирование отменена и уда
 
 
 #buttons
-
 NEW_RESERVE_BUTTON = 'Новое бронирование'
 TODAY_RESERVES_BUTTON = 'Бронирования на сегодня'
 ALL_RESERVES_BUTTON = 'Все бронирования'
