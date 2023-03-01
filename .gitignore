@@ -131,3 +131,6 @@ dmypy.json
 # Debug files
 test_snippets.py
 reservations.db
+
+# vscode
+.vscode/
