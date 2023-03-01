@@ -1,5 +1,7 @@
 from datetime import datetime
+
 import settings
+
 
 class InvalidDatetimeException(Exception):
     """Вызываем когда дата и/или время не проходят валидацию"""

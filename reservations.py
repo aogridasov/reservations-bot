@@ -3,9 +3,11 @@ import textwrap
 from dataclasses import dataclass
 from datetime import datetime
 from typing import List
-import settings
-from validators import apropriate_datetime_validator, datetime_format_validator, InvalidDatetimeException
 
+import settings
+from validators import (InvalidDatetimeException,
+                        apropriate_datetime_validator,
+                        datetime_format_validator)
 
 DB_CONNECTION = sqlite3.connect('reservations.db')
 DB_CONNECTION.row_factory = sqlite3.Row

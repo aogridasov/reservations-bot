@@ -7,12 +7,13 @@ from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
                       ReplyKeyboardMarkup, ReplyKeyboardRemove, Update)
 from telegram.ext import (ApplicationBuilder, CallbackQueryHandler,
                           CommandHandler, ContextTypes, ConversationHandler,
-                          MessageHandler, filters, ExtBot)
+                          ExtBot, MessageHandler, filters)
 
 import settings
-from reservations import (Reservation, add_reservation, delete_reservation,
-                          edit_reservation, show_reservations_all, show_reservations_archive,
-                          show_reservations_today, add_chat_id, get_chat_id_list)
+from reservations import (Reservation, add_chat_id, add_reservation,
+                          delete_reservation, edit_reservation,
+                          get_chat_id_list, show_reservations_all,
+                          show_reservations_archive, show_reservations_today)
 from validators import InvalidDatetimeException
 
 load_dotenv()
