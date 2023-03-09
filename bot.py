@@ -1,5 +1,6 @@
 import logging
 import os
+import textwrap
 from typing import Dict, List
 
 import settings
@@ -386,13 +387,13 @@ async def date_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def more_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Записывает дополнительную информацию.
     Выводит собраную информацию о брони с возможностью подтвердить / отменить запись"""
-    context.user_data['new_reservation'].info = update.message.text
+    context.user_data['new_reservation'].info = textwrap.dedent(update.message.text)
     reply_keyboard = [['Сохранить', 'Отмена']]
 
     await send_message(update, context, settings.RESERVER_ADDITION_SAVE_EDIT_DELETE)
     await send_message(
         update, context,
-        context.user_data['new_reservation'].reserve_preview(),
+        textwrap.dedent(context.user_data['new_reservation'].reserve_preview()),
         ReplyKeyboardMarkup(
             reply_keyboard,
             one_time_keyboard=True,

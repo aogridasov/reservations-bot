@@ -53,11 +53,12 @@ class Reservation:
 
     def reserve_preview(self):
         """Возвращает сокращенную информацию о резерве для превью"""
-        preview = """\
-        Имя гостя: {}
-        Время визита: {}
-        Дополнительная информация:
-        {}""".format(
+        preview = """Имя гостя: {}
+Время визита: {}
+
+Дополнительная информация:
+{}
+        """.format(
             self.guest_name,
             self.date_time.strftime(settings.DATETIME_FORMAT),
             self.info,
@@ -66,17 +67,18 @@ class Reservation:
 
     def reserve_card(self):
         """Возвращает полную информацию о резерве для карточки резерва"""
-        card = """\
-        Имя гостя: {}
-        Время визита: {}
-        Дополнительная информация:
-        {}
-        Бронь принял: {}
-        Гости пришли: {}
+        card = """Имя гостя: {}
+Время визита: {}
+
+Дополнительная информация:
+{}
+
+Бронь принял: {}
+Гости пришли: {}
         """.format(
             self.guest_name,
             self.date_time.strftime(settings.DATETIME_FORMAT),
-            self.info,
+            textwrap.dedent(self.info),
             self.user_added,
             self.visited_to_emoji(),
         )
