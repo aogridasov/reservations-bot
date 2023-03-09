@@ -118,12 +118,12 @@ async def reservations_to_messages(
      за каждый из элементов, добавляя к ним кнопки."""
     if len(reservations) == 0:
         await send_message(update, context, settings.NO_INFO_FOUND, reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD))
-    elif len(reservations) > 5:
+    elif len(reservations) > settings.NUMBER_OF_RESERVES_BEFORE_LIST:
         keyboard = []
         for reservation in reservations:
             keyboard.append([
                 InlineKeyboardButton(
-                    reservation.reserve_line(),
+                    reservation.reserve_line(logs=False),
                     callback_data=reservation
                 )
             ])

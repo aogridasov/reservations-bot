@@ -9,6 +9,9 @@ INVALID_DATETIME_FORMAT_ERROR = """Неверно введены дата или
 """.format(datetime.now().strftime(DATETIME_FORMAT))
 DATETIME_VALIDATION_FAILED = 'Ой, какая-то странная дата... Введите актуальную!'
 
+# Количество резервов выводимых отдельными сообщениями (больше > формируется список под одним)
+NUMBER_OF_RESERVES_BEFORE_LIST = 3
+
 # Добавляем новый резерв
 RESERVER_ADDITION_START = 'Добавляем новый резерв. '
 RESERVER_ADDITION_GUEST_NAME = 'Укажите имя гостя.'

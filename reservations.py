@@ -81,10 +81,15 @@ class Reservation:
             self.visited_to_emoji(),
         )
         return textwrap.dedent(card)
-    
-    def reserve_line(self):
+
+    def reserve_line(self, logs=True):
         """Возвращает краткую информацию о резерве в виде строки"""
-        line = f'{self.date_time.strftime(settings.DATETIME_FORMAT)} | {self.guest_name}'
+        if logs is True:
+            visited = self.visited
+        else:
+            visited = self.visited_to_emoji()
+
+        line = f'{self.date_time.strftime(settings.DATETIME_FORMAT)} | {self.guest_name} | {visited}'
         return line
 
 
