@@ -2,18 +2,17 @@ import logging
 import os
 from typing import Dict, List
 
+import settings
 from dotenv.main import load_dotenv
+from reservations import (Reservation, add_chat_id, add_reservation,
+                          delete_reservation, edit_reservation,
+                          get_chat_id_list, show_reservations_all,
+                          show_reservations_archive, show_reservations_today)
 from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
                       ReplyKeyboardMarkup, ReplyKeyboardRemove, Update)
 from telegram.ext import (ApplicationBuilder, CallbackQueryHandler,
                           CommandHandler, ContextTypes, ConversationHandler,
                           ExtBot, MessageHandler, filters)
-
-import settings
-from reservations import (Reservation, add_chat_id, add_reservation,
-                          delete_reservation, edit_reservation,
-                          get_chat_id_list, show_reservations_all,
-                          show_reservations_archive, show_reservations_today)
 from validators import InvalidDatetimeException
 
 load_dotenv()
@@ -47,18 +46,21 @@ RESERVE_CARD_KEYBOARD = [
 
 
 # базовая клавиатура с командами бота
-BASE_KEYBOARD = [
-    [settings.NEW_RESERVE_BUTTON, settings.TODAY_RESERVES_BUTTON],
-    [settings.ARCHIVE_BUTTON, settings.ALL_RESERVES_BUTTON],
-    [settings.HELP_BUTTON]
-]
+BASE_KEYBOARD = ReplyKeyboardMarkup(
+    [
+        [settings.NEW_RESERVE_BUTTON, settings.TODAY_RESERVES_BUTTON],
+        [settings.ARCHIVE_BUTTON, settings.ALL_RESERVES_BUTTON],
+        [settings.HELP_BUTTON]
+    ],
+    resize_keyboard=True
+    )
 
 
 async def send_message(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     msg_text: str,
-    reply_markup=ReplyKeyboardRemove(),
+    reply_markup: ReplyKeyboardMarkup or ReplyKeyboardRemove = ReplyKeyboardRemove(),
 ):
     """Шорткат для отправки сообщения в текущий чат"""
     return await context.bot.send_message(
@@ -117,7 +119,7 @@ async def reservations_to_messages(
     """Функция принимает список с резервами и отправляет сообщение
      за каждый из элементов, добавляя к ним кнопки."""
     if len(reservations) == 0:
-        await send_message(update, context, settings.NO_INFO_FOUND, reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD))
+        await send_message(update, context, settings.NO_INFO_FOUND, reply_markup=BASE_KEYBOARD)
     elif len(reservations) > settings.NUMBER_OF_RESERVES_BEFORE_LIST:
         keyboard = []
         for reservation in reservations:
@@ -267,7 +269,7 @@ async def edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update,
         context,
         settings.RESERVER_ADDITION_END_SAVE,
-        reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD))
+        reply_markup=BASE_KEYBOARD)
     await notify_all_users(
         update,
         context,
@@ -314,7 +316,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update,
         context,
         settings.GREETINGS,
-        reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD)
+        reply_markup=BASE_KEYBOARD
     )
 
 
@@ -324,7 +326,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update,
         context,
         settings.HELP,
-        reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD)
+        reply_markup=BASE_KEYBOARD
     )
 
 
@@ -335,7 +337,7 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update,
         context,
         '🙅‍♂️ Отменил 🙅‍♂️',
-        reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD))
+        reply_markup=BASE_KEYBOARD)
     return ConversationHandler.END
 
 
@@ -392,7 +394,10 @@ async def more_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update, context,
         context.user_data['new_reservation'].reserve_preview(),
         ReplyKeyboardMarkup(
-            reply_keyboard, one_time_keyboard=True, input_field_placeholder='Шо делаем?'
+            reply_keyboard,
+            one_time_keyboard=True,
+            input_field_placeholder='Шо делаем?',
+            resize_keyboard=True,
         )
     )
     return CHOICE
@@ -416,7 +421,7 @@ async def end_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update,
         context,
         settings.RESERVER_ADDITION_END_SAVE,
-        reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD))
+        reply_markup=BASE_KEYBOARD)
     await notify_all_users(
         update,
         context,
