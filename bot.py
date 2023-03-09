@@ -3,17 +3,19 @@ import os
 import textwrap
 from typing import Dict, List
 
-import settings
 from dotenv.main import load_dotenv
-from reservations import (Reservation, add_chat_id, add_reservation,
-                          delete_reservation, edit_reservation,
-                          get_chat_id_list, show_reservations_all,
-                          show_reservations_archive, show_reservations_today)
 from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
                       ReplyKeyboardMarkup, ReplyKeyboardRemove, Update)
 from telegram.ext import (ApplicationBuilder, CallbackQueryHandler,
                           CommandHandler, ContextTypes, ConversationHandler,
                           ExtBot, MessageHandler, filters)
+
+import settings
+from reservations import (Reservation, add_chat_id, add_reservation,
+                          delete_reservation, edit_reservation,
+                          get_chat_id_list, show_reservations_all,
+                          show_reservations_archive,
+                          show_reservations_per_date, show_reservations_today)
 from validators import InvalidDatetimeException
 
 load_dotenv()
@@ -35,6 +37,8 @@ logging.basicConfig(
 GUEST_NAME, DATE_TIME, MORE_INFO, CHOICE, CANCEL, END = range(6)
 # states for edit conversation
 EDIT_NAME, EDIT_DATETIME, EDIT_INFO = range(3)
+#state for reserves_per_date conversation
+ENTER_THE_DATE = 1
 
 # клавиатура для карточек резервов
 RESERVE_CARD_KEYBOARD = [
@@ -50,7 +54,7 @@ RESERVE_CARD_KEYBOARD = [
 BASE_KEYBOARD = ReplyKeyboardMarkup(
     [
         [settings.NEW_RESERVE_BUTTON, settings.TODAY_RESERVES_BUTTON],
-        [settings.ARCHIVE_BUTTON, settings.ALL_RESERVES_BUTTON],
+        [settings.ARCHIVE_BUTTON, settings.ALL_RESERVES_BUTTON, settings.RESERVES_PER_DATE_BUTTON],
         [settings.HELP_BUTTON]
     ],
     resize_keyboard=True
@@ -130,14 +134,26 @@ async def reservations_to_messages(
                     callback_data=reservation
                 )
             ])
-            
+
         await send_message(
                 update,
                 context,
                 'Вот что я нашел:',
+                reply_markup=BASE_KEYBOARD
+                )
+        await send_message(
+                update,
+                context,
+                'Резервы:',
                 reply_markup=InlineKeyboardMarkup(keyboard)
                 )
     else:
+        await send_message(
+                update,
+                context,
+                'Вот что я нашел:',
+                reply_markup=BASE_KEYBOARD
+                )
         for reservation in reservations:
             msg = await send_message(
                 update,
@@ -417,7 +433,7 @@ async def end_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reservation = context.user_data['new_reservation']
     add_reservation(reservation)
     logging.info('\nReservation saved:\n{}'.format(reservation.reserve_line()))
-    await reservations_to_messages(update, context, [reservation,])
+    await reservations_to_messages(update, context, [reservation, ])
     await send_message(
         update,
         context,
@@ -432,9 +448,32 @@ async def end_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
+async def reserves_per_date_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает нажатие кнопки выдачи резервов по дате. Запрашивает дату."""
+    await send_message(
+        update,
+        context,
+        settings.ASK_FOR_DATE,
+    )
+    return ENTER_THE_DATE
+
+
+async def reserves_per_date_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сохраняет запись и заканчивает сбор данных"""
+    try:
+        await reservations_to_messages(
+            update, context,
+            show_reservations_per_date(Reservation.str_to_date(update.message.text))
+        )
+    except InvalidDatetimeException as datetime_validation_error:
+        await send_message(update, context, datetime_validation_error.args[0]) # вот это конечно сильно
+        return ENTER_THE_DATE
+    return ConversationHandler.END
+
+
 def main() -> None:
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).arbitrary_callback_data(True).build()
-    
+
     # Добавляем обработку команды /start
     start_handler = CommandHandler('start', start)
     application.add_handler(start_handler)
@@ -486,6 +525,18 @@ def main() -> None:
     )
 
     application.add_handler(editreserve_handler)
+
+
+    # Добавляем обработку нажатия кнопки выдачи резервов по дате
+    reserves_per_date_handler = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex(f'^{settings.RESERVES_PER_DATE_BUTTON}$'), reserves_per_date_command)],
+        states={
+            ENTER_THE_DATE: [MessageHandler(filters.TEXT & (~ filters.COMMAND), reserves_per_date_answer)]
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+    )
+
+    application.add_handler(reserves_per_date_handler)
 
     # Поллинг
     application.run_polling()

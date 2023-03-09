@@ -4,6 +4,7 @@ from datetime import datetime
 # Ввода даты и времени
 DATETIME_FORMAT = '%d.%m.%Y %H:%M'
 DATETIME_DB_FORMAT = '%Y-%m-%d %H:%M' # лучше не трогать
+DATE_DB_FORMAT = '%Y-%m-%d' # лучше не трогать
 INVALID_DATETIME_FORMAT_ERROR = """Неверно введены дата или время!
 Пожалуйста используйте следующий формат: {}
 """.format(datetime.now().strftime(DATETIME_FORMAT))
@@ -20,6 +21,11 @@ RESERVER_ADDITION_MORE_INFO = 'Предоставьте дополнительн
 RESERVER_ADDITION_SAVE_EDIT_DELETE = 'Вы собираетесь сохранить бронирование:'
 RESERVER_ADDITION_END_SAVE = 'Запись успешно сохранена!'
 
+# Запрашиваем дату
+ASK_FOR_DATE = 'Укажите дату и время визита в формате: {}'.format(datetime.now().strftime('%d.%m.%Y'))
+WRONG_DATE_INPUT = """Неверно введена дата!
+Пожалуйста используйте следующий формат: {}
+""".format(datetime.now().strftime('%d.%m.%Y'))
 
 # Редактируем резерв
 RESERVE_EDITING_CHOICE = 'Что меняем?'
@@ -37,6 +43,7 @@ TODAY_RESERVES_BUTTON = 'Бронирования на сегодня'
 ALL_RESERVES_BUTTON = 'Все бронирования'
 ARCHIVE_BUTTON = 'Старые бронирования'
 HELP_BUTTON = 'Справка'
+RESERVES_PER_DATE_BUTTON = 'Брони на конкретную дату'
 
 # errors
 NO_INFO_FOUND = 'Ничего не нашлось :('

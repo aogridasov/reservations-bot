@@ -6,7 +6,7 @@ from typing import List
 
 import settings
 from validators import (InvalidDatetimeException,
-                        apropriate_datetime_validator,
+                        apropriate_datetime_validator, date_format_validator,
                         datetime_format_validator)
 
 DB_CONNECTION = sqlite3.connect('reservations.db')
@@ -32,6 +32,13 @@ class Reservation:
         datetime_obj = datetime.strptime(datetime_str, settings.DATETIME_FORMAT)
         apropriate_datetime_validator(datetime_obj)
         return datetime_obj
+
+    @staticmethod
+    def str_to_date(date: str) -> datetime:
+        """Метод парсит строку в нужном формате в date объект"""
+        date_format_validator(date)
+        date_obj = datetime.strptime(date, '%d.%m.%Y')
+        return date_obj
 
     def datetime_to_db_format(self) -> str:
         """Метод преобразует datetime объект
@@ -179,6 +186,16 @@ def show_reservations_today():
     """Функция выводит строки из бд, где дата соответствует текущей"""
     DB_CURSOR.execute(
         "SELECT rowid, * FROM reservations WHERE date(date_time) = DATE('now', 'localtime') ORDER BY date_time"
+    )
+    results = DB_CURSOR.fetchall()
+    return parse_db_to_reservation_class(results)
+
+
+def show_reservations_per_date(passed_date: datetime):
+    """Функция выводит строки из бд, где дата соответствует переданной в функцию"""
+    DB_CURSOR.execute(
+        "SELECT rowid, * FROM reservations WHERE date(date_time) = DATE(:passed_date) ORDER BY date_time",
+        {'passed_date': passed_date.strftime(settings.DATE_DB_FORMAT)}
     )
     results = DB_CURSOR.fetchall()
     return parse_db_to_reservation_class(results)
