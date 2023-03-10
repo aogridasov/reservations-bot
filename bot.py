@@ -1,11 +1,9 @@
 import logging
-import os
 import textwrap
 from typing import List
 
-
 from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
-                      ReplyKeyboardMarkup, ReplyKeyboardRemove, Update)
+                      ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, error)
 from telegram.ext import (ApplicationBuilder, CallbackQueryHandler,
                           CommandHandler, ContextTypes, ConversationHandler,
                           MessageHandler, filters)
@@ -17,7 +15,6 @@ from reservations import (Reservation, add_chat_id, add_reservation,
                           show_reservations_archive,
                           show_reservations_per_date, show_reservations_today)
 from validators import InvalidDatetimeException
-
 
 logging.basicConfig(
     level=logging.INFO,
@@ -96,12 +93,15 @@ async def notify_all_users(
         if chat_id == update.effective_chat.id:
             pass
         else:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=msg_text,
-                reply_markup=None,
-                parse_mode='Markdown'
-            )
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=msg_text,
+                    reply_markup=None,
+                    parse_mode='Markdown'
+                )
+            except error.TelegramError as er:
+                logging.info(f'\nError when notifying:\n{er}')
     await send_message(update, context,
                        settings.NOTIFY_ALL_CONFIRMATION,
                        reply_markup=None)
@@ -116,11 +116,14 @@ async def helloworld(
     Работает только для пользователя-администратора"""
     if update.effective_user.id == settings.ADMIN_TG_ID:
         for chat_id in get_chat_id_list():
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=update.message.text.split('/helloworld')[1],
-                reply_markup=None
-            )
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=update.message.text.split('/helloworld')[1],
+                    reply_markup=None
+                )
+            except error.TelegramError as er:
+                logging.info(f'\nError when notifying:\n{er}')
 
 
 async def keyboard_off(update: Update):
@@ -470,7 +473,6 @@ async def more_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             input_field_placeholder='Шо делаем?',
             resize_keyboard=True,
         ),
-        parse_mode='Markdown'
     )
     return CHOICE
 
