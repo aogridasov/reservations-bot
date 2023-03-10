@@ -3,7 +3,7 @@ import os
 import textwrap
 from typing import List
 
-from dotenv.main import load_dotenv
+
 from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
                       ReplyKeyboardMarkup, ReplyKeyboardRemove, Update)
 from telegram.ext import (ApplicationBuilder, CallbackQueryHandler,
@@ -18,11 +18,6 @@ from reservations import (Reservation, add_chat_id, add_reservation,
                           show_reservations_per_date, show_reservations_today)
 from validators import InvalidDatetimeException
 
-load_dotenv()
-
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-if not TELEGRAM_BOT_TOKEN:
-    exit('No TG token found!')
 
 logging.basicConfig(
     level=logging.INFO,
@@ -109,6 +104,22 @@ async def notify_all_users(
     await send_message(update, context,
                        settings.NOTIFY_ALL_CONFIRMATION,
                        reply_markup=None)
+
+
+async def helloworld(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    """Функция отправляет всем пользователям бота
+    сообщение написанное после команды /helloworld.
+    Работает только для пользователя-администратора"""
+    if update.effective_user.id == settings.ADMIN_TG_ID:
+        for chat_id in get_chat_id_list():
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=update.message.text.split('/helloworld')[1],
+                reply_markup=None
+            )
 
 
 async def keyboard_off(update: Update):
@@ -512,7 +523,9 @@ async def reserves_per_date_answer(update: Update, context: ContextTypes.DEFAULT
 
 
 def main() -> None:
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).arbitrary_callback_data(True).build()
+    if not settings.TELEGRAM_BOT_TOKEN:
+        exit('No TG token found!')
+    application = ApplicationBuilder().token(settings.TELEGRAM_BOT_TOKEN).arbitrary_callback_data(True).build()
 
     # Добавляем обработку команды /start
     start_handler = CommandHandler('start', start)
@@ -545,6 +558,10 @@ def main() -> None:
         todayreserves
     )
     application.add_handler(todayreserves_handler)
+
+    # Добавляем обработку команды /helloworld
+    helloworld_handler = CommandHandler('helloworld', helloworld)
+    application.add_handler(helloworld_handler)
 
     # Добавляем обработку команды /addreserve
     addreserve_handler = ConversationHandler(

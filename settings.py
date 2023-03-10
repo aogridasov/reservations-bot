@@ -1,5 +1,13 @@
+import os
 from datetime import datetime
+from dotenv.main import load_dotenv
 
+
+load_dotenv()
+
+# IDs
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+ADMIN_TG_ID = int(os.getenv('ADMIN_TG_ID'))
 
 # Ввода даты и времени
 DATETIME_FORMAT = '%d.%m.%Y %H:%M'
@@ -36,8 +44,7 @@ NOTIFY_ALL_NEW_RESERVE = 'Появилась новая бронь:'
 NOTIFY_ALL_EDIT_RESERVE = 'Изменение в бронировании:'
 NOTIFY_ALL_DELETE_RESERVE = 'Бронирование отменена и удалено из базы данных:'
 
-
-#buttons
+# buttons
 NEW_RESERVE_BUTTON = 'Новое бронирование'
 TODAY_RESERVES_BUTTON = 'Бронирования на сегодня'
 ALL_RESERVES_BUTTON = 'Все бронирования'
