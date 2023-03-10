@@ -101,6 +101,13 @@ class Reservation:
         line = (f'{self.date_time.strftime(settings.DATETIME_FORMAT)} | {self.guest_name} | {visited}')
         return line
 
+    def reserve_copy_card(self):
+        return f"""`TR
+{self.date_time.strftime(settings.DATETIME_FORMAT)}
+{self.guest_name}
+{self.info}`
+    """
+
 
 def parse_db_to_reservation_class(reservations_list: List) -> List:
     """Принимает список с данными из бд

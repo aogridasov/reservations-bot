@@ -48,9 +48,10 @@ RESERVE_CARD_KEYBOARD = [
                 'Удалить бронь', callback_data='delete_reservation'
             ),
             InlineKeyboardButton(
-                'Изменить бронь', callback_data=str('edit_reservation')
+                'Изменить бронь', callback_data='edit_reservation'
             ),
         ],
+        [InlineKeyboardButton('Для копирования', callback_data='copy_format')]
     ]
 
 
@@ -92,8 +93,10 @@ async def send_message(
 async def notify_all_users(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    msg_text: str):
-    """Функция отправляет всем пользователям бота сообщение с переданной информацией"""
+    msg_text: str
+):
+    """Функция отправляет всем пользователям бота
+    сообщение с переданной информацией"""
     for chat_id in get_chat_id_list():
         if chat_id == update.effective_chat.id:
             pass
@@ -103,7 +106,9 @@ async def notify_all_users(
                 text=msg_text,
                 reply_markup=None
             )
-    await send_message(update, context, settings.NOTIFY_ALL_CONFIRMATION, reply_markup=None)
+    await send_message(update, context,
+                       settings.NOTIFY_ALL_CONFIRMATION,
+                       reply_markup=None)
 
 
 async def keyboard_off(update: Update):
@@ -236,6 +241,21 @@ async def edit_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def copy_format_button(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    """Функция изменяет сообщение и выводит информацию о резерве
+    в удобном для копирования формате"""
+    reservation = await get_reservation_from_msg(
+        update.effective_message.id, context
+    )
+    await update.callback_query.edit_message_text(
+        text=reservation.reserve_copy_card(),
+        parse_mode='Markdown'
+    )
+    return ConversationHandler.END
+
+
 async def edit_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Функция предлагает изменить имя в резерве"""
     await keyboard_off(update)
@@ -324,6 +344,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await edit_button(update, context)
         if query.data == 'visited':
             await visited_button(update, context)
+        if query.data == 'copy_format':
+            await copy_format_button(update, context)
         if query.data == 'edit_name':
             await edit_name(update, context)
             return EDIT_NAME
