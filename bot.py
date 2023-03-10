@@ -85,6 +85,7 @@ async def send_message(
         chat_id=update.effective_chat.id,
         text=msg_text,
         reply_markup=reply_markup,
+        parse_mode='Markdown'
     )
 
 
