@@ -99,7 +99,8 @@ async def notify_all_users(
             await context.bot.send_message(
                 chat_id=chat_id,
                 text=msg_text,
-                reply_markup=None
+                reply_markup=None,
+                parse_mode='Markdown'
             )
     await send_message(update, context,
                        settings.NOTIFY_ALL_CONFIRMATION,
@@ -204,7 +205,8 @@ async def delete_reserve_button(
     reservation = await get_reservation_from_msg(update.effective_message.id, context)
     delete_reservation(reservation)
     await update.callback_query.edit_message_text(
-        text='ОТМЕНЕНА' + '\n' + reservation.reserve_card()
+        text='ОТМЕНЕНА' + '\n' + reservation.reserve_card(),
+        parse_mode='Markdown'
     )
     del context.chat_data['msg_reservation'][update.effective_message.id]
     logging.info('\nReservation deleted:\n{}'.format(reservation.reserve_line()))
@@ -227,7 +229,8 @@ async def visited_button(
     edit_reservation(reservation)
     await update.callback_query.edit_message_text(
         text=reservation.reserve_card(),
-        reply_markup=InlineKeyboardMarkup(RESERVE_CARD_KEYBOARD)
+        reply_markup=InlineKeyboardMarkup(RESERVE_CARD_KEYBOARD),
+        parse_mode='Markdown'
     )
     await create_update_msg_reservation_link(update.effective_message.id, reservation, context)
     logging.info('\nGuests visit status changed:\n{}'.format(reservation.reserve_line()))
@@ -248,7 +251,7 @@ async def edit_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     await query.edit_message_text(
         text='Что меняем?:' + '\n\n' + update.effective_message.text,
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown'
     )
 
 
@@ -466,7 +469,8 @@ async def more_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
             one_time_keyboard=True,
             input_field_placeholder='Шо делаем?',
             resize_keyboard=True,
-        )
+        ),
+        parse_mode='Markdown'
     )
     return CHOICE
 
