@@ -13,10 +13,20 @@ def apropriate_datetime_validator(datetime_obj: datetime) -> bool:
         raise InvalidDatetimeException(settings.DATETIME_VALIDATION_FAILED)
     return True
 
+
 def datetime_format_validator(datetime_str: str) -> bool:
     """Функция проверяет строку на соответствие необходимому формату ввода"""
     try:
         datetime.strptime(datetime_str, settings.DATETIME_FORMAT)
     except ValueError:
         raise InvalidDatetimeException(settings.INVALID_DATETIME_FORMAT_ERROR)
+    return True
+
+
+def date_format_validator(date: str) -> bool:
+    """Функция проверяет строку на соответствие необходимому формату ввода"""
+    try:
+        datetime.strptime(date, '%d.%m.%Y')
+    except ValueError:
+        raise InvalidDatetimeException(settings.WRONG_DATE_INPUT)
     return True

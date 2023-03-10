@@ -5,8 +5,7 @@ from datetime import datetime
 from typing import List
 
 import settings
-from validators import (InvalidDatetimeException,
-                        apropriate_datetime_validator,
+from validators import (apropriate_datetime_validator, date_format_validator,
                         datetime_format_validator)
 
 DB_CONNECTION = sqlite3.connect('reservations.db')
@@ -24,14 +23,22 @@ class Reservation:
     user_added: str = None
     visited: int = 0
 
-
     @staticmethod
     def str_to_datetime(datetime_str: str) -> datetime:
         """Метод парсит строку в нужном формате в datetime объект"""
         datetime_format_validator(datetime_str)
-        datetime_obj = datetime.strptime(datetime_str, settings.DATETIME_FORMAT)
+        datetime_obj = datetime.strptime(
+            datetime_str, settings.DATETIME_FORMAT
+        )
         apropriate_datetime_validator(datetime_obj)
         return datetime_obj
+
+    @staticmethod
+    def str_to_date(date: str) -> datetime:
+        """Метод парсит строку в нужном формате в date объект"""
+        date_format_validator(date)
+        date_obj = datetime.strptime(date, '%d.%m.%Y')
+        return date_obj
 
     def datetime_to_db_format(self) -> str:
         """Метод преобразует datetime объект
@@ -53,11 +60,12 @@ class Reservation:
 
     def reserve_preview(self):
         """Возвращает сокращенную информацию о резерве для превью"""
-        preview = """\
-        Имя гостя: {}
-        Время визита: {}
-        Дополнительная информация:
-        {}""".format(
+        preview = """*Имя гостя:* {}
+*Время визита:* {}
+
+*Дополнительная информация:*
+{}
+        """.format(
             self.guest_name,
             self.date_time.strftime(settings.DATETIME_FORMAT),
             self.info,
@@ -66,30 +74,44 @@ class Reservation:
 
     def reserve_card(self):
         """Возвращает полную информацию о резерве для карточки резерва"""
-        card = """\
-        Имя гостя: {}
-        Время визита: {}
-        Дополнительная информация:
-        {}
-        Бронь принял: {}
-        Гости пришли: {}
+        card = """*Имя гостя:* {}
+*Время визита:* {}
+
+*Дополнительная информация:*
+{}
+
+*Бронь принял(а):* {}
+*Гости пришли:* {}
         """.format(
             self.guest_name,
             self.date_time.strftime(settings.DATETIME_FORMAT),
-            self.info,
+            textwrap.dedent(self.info),
             self.user_added,
             self.visited_to_emoji(),
         )
         return textwrap.dedent(card)
-    
-    def reserve_line(self):
+
+    def reserve_line(self, logs=True):
         """Возвращает краткую информацию о резерве в виде строки"""
-        line = f'{self.date_time.strftime(settings.DATETIME_FORMAT)} | {self.guest_name}'
+        if logs is True:
+            visited = self.visited
+        else:
+            visited = self.visited_to_emoji()
+
+        line = (f'{self.date_time.strftime(settings.DATETIME_FORMAT)} | {self.guest_name} | {visited}')
         return line
+
+    def reserve_copy_card(self):
+        return f"""`TR
+{self.date_time.strftime(settings.DATETIME_FORMAT)}
+{self.guest_name}
+{self.info}`
+    """
 
 
 def parse_db_to_reservation_class(reservations_list: List) -> List:
-    """Принимает список с данными из бд и парсит в список классов Reservation"""
+    """Принимает список с данными из бд
+    и парсит в список классов Reservation"""
     reservations = []
     for line in reservations_list:
         parsed_line = dict(line)
@@ -97,7 +119,9 @@ def parse_db_to_reservation_class(reservations_list: List) -> List:
             Reservation(
                 id=parsed_line['rowid'],
                 guest_name=parsed_line['guest_name'],
-                date_time=datetime.strptime(parsed_line['date_time'], settings.DATETIME_DB_FORMAT),
+                date_time=datetime.strptime(
+                    parsed_line['date_time'], settings.DATETIME_DB_FORMAT
+                ),
                 info=parsed_line['info'],
                 user_added=parsed_line['user_added'],
                 visited=parsed_line['visited'],
@@ -107,10 +131,14 @@ def parse_db_to_reservation_class(reservations_list: List) -> List:
 
 
 def add_reservation(reservation: Reservation):
-    """Функция записывает данные резерва из объекта класса Reservation в базу данных"""
+    """Функция записывает данные резерва
+    из объекта класса Reservation в базу данных"""
     with DB_CONNECTION:
         DB_CURSOR.execute(
-            "INSERT INTO reservations VALUES (:guest_name, :date_time, :info, :user_added, :visited)",
+            """
+            INSERT INTO reservations
+            VALUES (:guest_name, :date_time, :info, :user_added, :visited)
+            """,
             {
                 'guest_name': reservation.guest_name,
                 'date_time': reservation.datetime_to_db_format(),
@@ -136,7 +164,7 @@ def edit_reservation(reservation: Reservation):
     with DB_CONNECTION:
         DB_CURSOR.execute(
             """UPDATE reservations
-               SET 
+               SET
                guest_name=:guest_name,
                date_time=:date_time,
                info=:info,
@@ -155,7 +183,12 @@ def edit_reservation(reservation: Reservation):
 def show_reservations_all():
     """Функция выводит все БУДУЩИЕ резервы."""
     DB_CURSOR.execute(
-        "SELECT rowid, * FROM reservations WHERE date(date_time) >= DATE('now', 'localtime') ORDER BY date_time"
+        """
+        SELECT rowid, *
+        FROM reservations
+        WHERE date(date_time) >= DATE('now', 'localtime')
+        ORDER BY date_time
+        """
     )
     return parse_db_to_reservation_class(DB_CURSOR.fetchall())
 
@@ -163,7 +196,12 @@ def show_reservations_all():
 def show_reservations_archive():
     """Функция выводит все ПРОШЕДШИЕ резервы."""
     DB_CURSOR.execute(
-         "SELECT rowid, * FROM reservations WHERE date(date_time) < DATE('now', 'localtime') ORDER BY date_time"
+         """
+         SELECT rowid, *
+         FROM reservations
+         WHERE date(date_time) < DATE('now', 'localtime')
+         ORDER BY date_time
+         """
     )
     return parse_db_to_reservation_class(DB_CURSOR.fetchall())
 
@@ -171,7 +209,28 @@ def show_reservations_archive():
 def show_reservations_today():
     """Функция выводит строки из бд, где дата соответствует текущей"""
     DB_CURSOR.execute(
-        "SELECT rowid, * FROM reservations WHERE date(date_time) = DATE('now', 'localtime') ORDER BY date_time"
+        """
+        SELECT rowid, *
+        FROM reservations
+        WHERE date(date_time) = DATE('now', 'localtime')
+        ORDER BY date_time
+        """
+    )
+    results = DB_CURSOR.fetchall()
+    return parse_db_to_reservation_class(results)
+
+
+def show_reservations_per_date(passed_date: datetime):
+    """Функция выводит строки из БД,
+    где дата соответствует переданной в функцию"""
+    DB_CURSOR.execute(
+        """
+        SELECT rowid, *
+        FROM reservations
+        WHERE date(date_time) = DATE(:passed_date)
+        ORDER BY date_time
+        """,
+        {'passed_date': passed_date.strftime(settings.DATE_DB_FORMAT)}
     )
     results = DB_CURSOR.fetchall()
     return parse_db_to_reservation_class(results)

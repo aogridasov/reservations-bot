@@ -1,26 +1,20 @@
 import logging
-import os
-from typing import Dict, List
+import textwrap
+from typing import List
 
-from dotenv.main import load_dotenv
 from telegram import (InlineKeyboardButton, InlineKeyboardMarkup,
-                      ReplyKeyboardMarkup, ReplyKeyboardRemove, Update)
+                      ReplyKeyboardMarkup, ReplyKeyboardRemove, Update, error)
 from telegram.ext import (ApplicationBuilder, CallbackQueryHandler,
                           CommandHandler, ContextTypes, ConversationHandler,
-                          ExtBot, MessageHandler, filters)
+                          MessageHandler, filters)
 
 import settings
 from reservations import (Reservation, add_chat_id, add_reservation,
                           delete_reservation, edit_reservation,
                           get_chat_id_list, show_reservations_all,
-                          show_reservations_archive, show_reservations_today)
+                          show_reservations_archive,
+                          show_reservations_per_date, show_reservations_today)
 from validators import InvalidDatetimeException
-
-load_dotenv()
-
-TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-if not TELEGRAM_BOT_TOKEN:
-    exit('No TG token found!')
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,54 +29,101 @@ logging.basicConfig(
 GUEST_NAME, DATE_TIME, MORE_INFO, CHOICE, CANCEL, END = range(6)
 # states for edit conversation
 EDIT_NAME, EDIT_DATETIME, EDIT_INFO = range(3)
+# state for reserves_per_date conversation
+ENTER_THE_DATE = 1
 
 # клавиатура для карточек резервов
 RESERVE_CARD_KEYBOARD = [
         [InlineKeyboardButton('Гости пришли', callback_data='visited')],
         [
-            InlineKeyboardButton('Удалить бронь', callback_data='delete_reservation'),
-            InlineKeyboardButton('Изменить бронь', callback_data=str('edit_reservation')),
+            InlineKeyboardButton(
+                'Удалить бронь', callback_data='delete_reservation'
+            ),
+            InlineKeyboardButton(
+                'Изменить бронь', callback_data='edit_reservation'
+            ),
         ],
+        [InlineKeyboardButton('Для копирования', callback_data='copy_format')]
     ]
 
 
 # базовая клавиатура с командами бота
-BASE_KEYBOARD = [
-    [settings.NEW_RESERVE_BUTTON, settings.TODAY_RESERVES_BUTTON],
-    [settings.ARCHIVE_BUTTON, settings.ALL_RESERVES_BUTTON],
-    [settings.HELP_BUTTON]
-]
+BASE_KEYBOARD = ReplyKeyboardMarkup(
+    [
+        [
+            settings.NEW_RESERVE_BUTTON,
+            settings.TODAY_RESERVES_BUTTON
+        ],
+        [
+            settings.ARCHIVE_BUTTON,
+            settings.ALL_RESERVES_BUTTON,
+            settings.RESERVES_PER_DATE_BUTTON
+        ],
+        [
+            settings.HELP_BUTTON
+        ]
+    ],
+    resize_keyboard=True
+    )
 
 
 async def send_message(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     msg_text: str,
-    reply_markup=ReplyKeyboardRemove(),
+    reply_markup: ReplyKeyboardMarkup or ReplyKeyboardRemove or InlineKeyboardMarkup = ReplyKeyboardRemove(),
 ):
     """Шорткат для отправки сообщения в текущий чат"""
     return await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=msg_text,
         reply_markup=reply_markup,
+        parse_mode='Markdown'
     )
 
 
 async def notify_all_users(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    msg_text: str):
-    """Функция отправляет всем пользователям бота сообщение с переданной информацией"""
+    msg_text: str
+):
+    """Функция отправляет всем пользователям бота
+    сообщение с переданной информацией"""
     for chat_id in get_chat_id_list():
         if chat_id == update.effective_chat.id:
             pass
         else:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=msg_text,
-                reply_markup=None
-            )
-    await send_message(update, context, settings.NOTIFY_ALL_CONFIRMATION, reply_markup=None)
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=msg_text,
+                    reply_markup=None,
+                    parse_mode='Markdown'
+                )
+            except error.TelegramError as er:
+                logging.info(f'\nError when notifying:\n{er}')
+    await send_message(update, context,
+                       settings.NOTIFY_ALL_CONFIRMATION,
+                       reply_markup=None)
+
+
+async def helloworld(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    """Функция отправляет всем пользователям бота
+    сообщение написанное после команды /helloworld.
+    Работает только для пользователя-администратора"""
+    if update.effective_user.id == settings.ADMIN_TG_ID:
+        for chat_id in get_chat_id_list():
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=update.message.text.split('/helloworld')[1],
+                    reply_markup=None
+                )
+            except error.TelegramError as er:
+                logging.info(f'\nError when notifying:\n{er}')
 
 
 async def keyboard_off(update: Update):
@@ -117,24 +158,36 @@ async def reservations_to_messages(
     """Функция принимает список с резервами и отправляет сообщение
      за каждый из элементов, добавляя к ним кнопки."""
     if len(reservations) == 0:
-        await send_message(update, context, settings.NO_INFO_FOUND, reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD))
-    elif len(reservations) > 5:
+        await send_message(update, context, settings.NO_INFO_FOUND, reply_markup=BASE_KEYBOARD)
+    elif len(reservations) > settings.NUMBER_OF_RESERVES_BEFORE_LIST:
         keyboard = []
         for reservation in reservations:
             keyboard.append([
                 InlineKeyboardButton(
-                    reservation.reserve_line(),
+                    reservation.reserve_line(logs=False),
                     callback_data=reservation
                 )
             ])
-            
+
         await send_message(
                 update,
                 context,
                 'Вот что я нашел:',
+                reply_markup=BASE_KEYBOARD
+                )
+        await send_message(
+                update,
+                context,
+                'Резервы:',
                 reply_markup=InlineKeyboardMarkup(keyboard)
                 )
     else:
+        await send_message(
+                update,
+                context,
+                'Вот что я нашел:',
+                reply_markup=BASE_KEYBOARD
+                )
         for reservation in reservations:
             msg = await send_message(
                 update,
@@ -155,7 +208,8 @@ async def delete_reserve_button(
     reservation = await get_reservation_from_msg(update.effective_message.id, context)
     delete_reservation(reservation)
     await update.callback_query.edit_message_text(
-        text='ОТМЕНЕНА' + '\n' + reservation.reserve_card()
+        text='ОТМЕНЕНА' + '\n' + reservation.reserve_card(),
+        parse_mode='Markdown'
     )
     del context.chat_data['msg_reservation'][update.effective_message.id]
     logging.info('\nReservation deleted:\n{}'.format(reservation.reserve_line()))
@@ -178,7 +232,8 @@ async def visited_button(
     edit_reservation(reservation)
     await update.callback_query.edit_message_text(
         text=reservation.reserve_card(),
-        reply_markup=InlineKeyboardMarkup(RESERVE_CARD_KEYBOARD)
+        reply_markup=InlineKeyboardMarkup(RESERVE_CARD_KEYBOARD),
+        parse_mode='Markdown'
     )
     await create_update_msg_reservation_link(update.effective_message.id, reservation, context)
     logging.info('\nGuests visit status changed:\n{}'.format(reservation.reserve_line()))
@@ -199,8 +254,23 @@ async def edit_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     await query.edit_message_text(
         text='Что меняем?:' + '\n\n' + update.effective_message.text,
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown'
     )
+
+
+async def copy_format_button(
+    update: Update, context: ContextTypes.DEFAULT_TYPE
+):
+    """Функция изменяет сообщение и выводит информацию о резерве
+    в удобном для копирования формате"""
+    reservation = await get_reservation_from_msg(
+        update.effective_message.id, context
+    )
+    await update.callback_query.edit_message_text(
+        text=reservation.reserve_copy_card(),
+        parse_mode='Markdown'
+    )
+    return ConversationHandler.END
 
 
 async def edit_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -257,17 +327,20 @@ async def edit_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # изменяем его в ДБ
     edit_reservation(reservation)
 
-    logging.info('\nReservation info changed:\n{}'.format(reservation.reserve_line()))
-    msg = await send_message(update,
-                       context,
-                       reservation.reserve_card(),
-                       reply_markup=InlineKeyboardMarkup(RESERVE_CARD_KEYBOARD)
+    logging.info('\nReservation info changed:\n{}'.format(
+        reservation.reserve_line())
+    )
+    msg = await send_message(
+        update,
+        context,
+        reservation.reserve_card(),
+        reply_markup=InlineKeyboardMarkup(RESERVE_CARD_KEYBOARD)
     )
     await send_message(
         update,
         context,
         settings.RESERVER_ADDITION_END_SAVE,
-        reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD))
+        reply_markup=BASE_KEYBOARD)
     await notify_all_users(
         update,
         context,
@@ -288,6 +361,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await edit_button(update, context)
         if query.data == 'visited':
             await visited_button(update, context)
+        if query.data == 'copy_format':
+            await copy_format_button(update, context)
         if query.data == 'edit_name':
             await edit_name(update, context)
             return EDIT_NAME
@@ -298,7 +373,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await edit_info(update, context)
             return EDIT_INFO
         if isinstance(query.data, Reservation):
-            await reservations_to_messages(update, context, [query.data,])
+            await reservations_to_messages(update, context, [query.data, ])
     except KeyError:
         await send_message(update, context, settings.CARD_BUTTONS_ERROR_MSG)
 
@@ -314,7 +389,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update,
         context,
         settings.GREETINGS,
-        reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD)
+        reply_markup=BASE_KEYBOARD
     )
 
 
@@ -324,7 +399,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update,
         context,
         settings.HELP,
-        reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD)
+        reply_markup=BASE_KEYBOARD
     )
 
 
@@ -335,13 +410,14 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         update,
         context,
         '🙅‍♂️ Отменил 🙅‍♂️',
-        reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD))
+        reply_markup=BASE_KEYBOARD)
     return ConversationHandler.END
 
 
 async def archive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает команду /archive. Выводит резервы раньше текущей даты"""
     await reservations_to_messages(update, context, show_reservations_archive())
+
 
 async def allreserves(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Обрабатывает команду /allreserves. Выводит резервы позже текущей даты"""
@@ -384,16 +460,19 @@ async def date_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def more_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Записывает дополнительную информацию.
     Выводит собраную информацию о брони с возможностью подтвердить / отменить запись"""
-    context.user_data['new_reservation'].info = update.message.text
+    context.user_data['new_reservation'].info = textwrap.dedent(update.message.text)
     reply_keyboard = [['Сохранить', 'Отмена']]
 
     await send_message(update, context, settings.RESERVER_ADDITION_SAVE_EDIT_DELETE)
     await send_message(
         update, context,
-        context.user_data['new_reservation'].reserve_preview(),
+        textwrap.dedent(context.user_data['new_reservation'].reserve_preview()),
         ReplyKeyboardMarkup(
-            reply_keyboard, one_time_keyboard=True, input_field_placeholder='Шо делаем?'
-        )
+            reply_keyboard,
+            one_time_keyboard=True,
+            input_field_placeholder='Шо делаем?',
+            resize_keyboard=True,
+        ),
     )
     return CHOICE
 
@@ -411,12 +490,12 @@ async def end_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reservation = context.user_data['new_reservation']
     add_reservation(reservation)
     logging.info('\nReservation saved:\n{}'.format(reservation.reserve_line()))
-    await reservations_to_messages(update, context, [reservation,])
+    await reservations_to_messages(update, context, [reservation, ])
     await send_message(
         update,
         context,
         settings.RESERVER_ADDITION_END_SAVE,
-        reply_markup=ReplyKeyboardMarkup(BASE_KEYBOARD))
+        reply_markup=BASE_KEYBOARD)
     await notify_all_users(
         update,
         context,
@@ -426,36 +505,88 @@ async def end_save(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 
+async def reserves_per_date_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Обрабатывает нажатие кнопки выдачи резервов по дате. Запрашивает дату."""
+    await send_message(
+        update,
+        context,
+        settings.ASK_FOR_DATE,
+    )
+    return ENTER_THE_DATE
+
+
+async def reserves_per_date_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Сохраняет запись и заканчивает сбор данных"""
+    try:
+        await reservations_to_messages(
+            update, context,
+            show_reservations_per_date(Reservation.str_to_date(update.message.text))
+        )
+    except InvalidDatetimeException as datetime_validation_error:
+        await send_message(update, context, datetime_validation_error.args[0]) # вот это конечно сильно
+        return ENTER_THE_DATE
+    return ConversationHandler.END
+
+
 def main() -> None:
-    application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).arbitrary_callback_data(True).build()
-    
+    if not settings.TELEGRAM_BOT_TOKEN:
+        exit('No TG token found!')
+    application = ApplicationBuilder().token(settings.TELEGRAM_BOT_TOKEN).arbitrary_callback_data(True).build()
+
     # Добавляем обработку команды /start
     start_handler = CommandHandler('start', start)
     application.add_handler(start_handler)
 
     # Добавляем обработку команды /archive
-    archive_handler = MessageHandler(filters.Regex(f'^{settings.ARCHIVE_BUTTON}$'), archive)
+    archive_handler = MessageHandler(
+        filters.Regex(f'^{settings.ARCHIVE_BUTTON}$'),
+        archive
+    )
     application.add_handler(archive_handler)
 
     # Добавляем обработку команды /help
-    help_handler = MessageHandler(filters.Regex(f'^{settings.HELP_BUTTON}$'), help_command)
+    help_handler = MessageHandler(
+        filters.Regex(f'^{settings.HELP_BUTTON}$'),
+        help_command
+    )
     application.add_handler(help_handler)
 
     # Добавляем обработку команды /allreserves
-    allreserves_handler = MessageHandler(filters.Regex(f'^{settings.ALL_RESERVES_BUTTON}$'), allreserves)
+    allreserves_handler = MessageHandler(
+        filters.Regex(f'^{settings.ALL_RESERVES_BUTTON}$'),
+        allreserves
+    )
     application.add_handler(allreserves_handler)
 
     # Добавляем обработку команды /todayreserves
-    todayreserves_handler = MessageHandler(filters.Regex(f'^{settings.TODAY_RESERVES_BUTTON}$'), todayreserves)
+    todayreserves_handler = MessageHandler(
+        filters.Regex(f'^{settings.TODAY_RESERVES_BUTTON}$'),
+        todayreserves
+    )
     application.add_handler(todayreserves_handler)
+
+    # Добавляем обработку команды /helloworld
+    helloworld_handler = CommandHandler('helloworld', helloworld)
+    application.add_handler(helloworld_handler)
 
     # Добавляем обработку команды /addreserve
     addreserve_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex(f'^{settings.NEW_RESERVE_BUTTON}$'), addreserve)],
+        entry_points=[
+            MessageHandler(
+                filters.Regex(f'^{settings.NEW_RESERVE_BUTTON}$'),
+                addreserve
+            )
+        ],
         states={
-            GUEST_NAME: [MessageHandler(filters.TEXT & (~ filters.COMMAND), guest_name)],
-            DATE_TIME: [MessageHandler(filters.TEXT & (~ filters.COMMAND), date_time)],
-            MORE_INFO: [MessageHandler(filters.TEXT & (~ filters.COMMAND), more_info)],
+            GUEST_NAME: [
+                MessageHandler(filters.TEXT & (~ filters.COMMAND), guest_name)
+            ],
+            DATE_TIME: [
+                MessageHandler(filters.TEXT & (~ filters.COMMAND), date_time)
+            ],
+            MORE_INFO: [
+                MessageHandler(filters.TEXT & (~ filters.COMMAND), more_info)
+            ],
             CHOICE: [
                 MessageHandler(filters.Regex('^Сохранить$'), end_save),
                 MessageHandler(filters.Regex('^Отмена$'), cancel_new_reserve),
@@ -472,14 +603,41 @@ def main() -> None:
             CallbackQueryHandler(button),
         ],
         states={
-            EDIT_NAME: [MessageHandler(filters.TEXT & (~ filters.COMMAND), edit_save)],
-            EDIT_DATETIME: [MessageHandler(filters.TEXT & (~ filters.COMMAND), edit_save)],
-            EDIT_INFO: [MessageHandler(filters.TEXT & (~ filters.COMMAND), edit_save)],
+            EDIT_NAME: [
+                MessageHandler(filters.TEXT & (~ filters.COMMAND), edit_save)
+            ],
+            EDIT_DATETIME: [
+                MessageHandler(filters.TEXT & (~ filters.COMMAND), edit_save)
+            ],
+            EDIT_INFO: [
+                MessageHandler(filters.TEXT & (~ filters.COMMAND), edit_save)
+            ],
         },
         fallbacks=[CommandHandler('cancel', cancel)],
     )
 
     application.add_handler(editreserve_handler)
+
+    # Добавляем обработку нажатия кнопки выдачи резервов по дате
+    reserves_per_date_handler = ConversationHandler(
+        entry_points=[
+            MessageHandler(
+                filters.Regex(f'^{settings.RESERVES_PER_DATE_BUTTON}$'),
+                reserves_per_date_command
+            )
+        ],
+        states={
+            ENTER_THE_DATE: [
+                MessageHandler(
+                    filters.TEXT & (~ filters.COMMAND),
+                    reserves_per_date_answer
+                )
+            ]
+        },
+        fallbacks=[CommandHandler('cancel', cancel)],
+    )
+
+    application.add_handler(reserves_per_date_handler)
 
     # Поллинг
     application.run_polling()
