@@ -40,6 +40,18 @@ class Reservation:
         date_obj = datetime.strptime(date, '%d.%m.%Y')
         return date_obj
 
+    @staticmethod
+    def parse_escape(line: str) -> str:
+        """Метод закрывает специальные символы
+        от обработки parse_mode телеграма"""
+        escaped_line = line
+        for i in line:
+            if i in settings.HTML_ESCAPE_SYMBOLS.keys():
+                escaped_line.replace(
+                    i, settings.HTML_ESCAPE_SYMBOLS[i]
+                )
+        return escaped_line
+
     def datetime_to_db_format(self) -> str:
         """Метод преобразует datetime объект
         в данные для передачи в соответсвующую колонку БД"""
@@ -60,32 +72,32 @@ class Reservation:
 
     def reserve_preview(self):
         """Возвращает сокращенную информацию о резерве для превью"""
-        preview = """*Имя гостя:* {}
-*Время визита:* {}
+        preview = """<b>Имя гостя:</b> {}
+<b>Время визита:</b> {}
 
-*Дополнительная информация:*
+<b>Дополнительная информация:</b>
 {}
         """.format(
-            self.guest_name,
+            self.parse_escape(self.guest_name),
             self.date_time.strftime(settings.DATETIME_FORMAT),
-            self.info,
+            self.parse_escape(self.info),
         )
         return textwrap.dedent(preview)
 
     def reserve_card(self):
         """Возвращает полную информацию о резерве для карточки резерва"""
-        card = """*Имя гостя:* {}
-*Время визита:* {}
+        card = """<b>Имя гостя:</b> {}
+<b>Время визита:</b> {}
 
-*Дополнительная информация:*
+<b>Дополнительная информация:</b>
 {}
 
-*Бронь принял(а):* {}
-*Гости пришли:* {}
+<b>Бронь принял(а):</b> {}
+<b>Гости пришли:</b> {}
         """.format(
-            self.guest_name,
+            self.parse_escape(self.guest_name),
             self.date_time.strftime(settings.DATETIME_FORMAT),
-            textwrap.dedent(self.info),
+            self.parse_escape((textwrap.dedent(self.info))),
             self.user_added,
             self.visited_to_emoji(),
         )
@@ -98,7 +110,9 @@ class Reservation:
         else:
             visited = self.visited_to_emoji()
 
-        line = (f'{self.date_time.strftime(settings.DATETIME_FORMAT)} | {self.guest_name} | {visited}')
+        line = (
+            f'{self.date_time.strftime(settings.DATETIME_FORMAT)} | {self.parse_escape(self.guest_name)} | {visited}'
+        )
         return line
 
     def reserve_copy_card(self):

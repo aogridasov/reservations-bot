@@ -78,7 +78,7 @@ async def send_message(
         chat_id=update.effective_chat.id,
         text=msg_text,
         reply_markup=reply_markup,
-        parse_mode='Markdown'
+        parse_mode='HTML'
     )
 
 
@@ -98,7 +98,7 @@ async def notify_all_users(
                     chat_id=chat_id,
                     text=msg_text,
                     reply_markup=None,
-                    parse_mode='Markdown'
+                    parse_mode='HTML'
                 )
             except error.TelegramError as er:
                 logging.info(f'\nError when notifying:\n{er}')
@@ -209,7 +209,7 @@ async def delete_reserve_button(
     delete_reservation(reservation)
     await update.callback_query.edit_message_text(
         text='ОТМЕНЕНА' + '\n' + reservation.reserve_card(),
-        parse_mode='Markdown'
+        parse_mode='HTML'
     )
     del context.chat_data['msg_reservation'][update.effective_message.id]
     logging.info('\nReservation deleted:\n{}'.format(reservation.reserve_line()))
@@ -233,7 +233,7 @@ async def visited_button(
     await update.callback_query.edit_message_text(
         text=reservation.reserve_card(),
         reply_markup=InlineKeyboardMarkup(RESERVE_CARD_KEYBOARD),
-        parse_mode='Markdown'
+        parse_mode='HTML'
     )
     await create_update_msg_reservation_link(update.effective_message.id, reservation, context)
     logging.info('\nGuests visit status changed:\n{}'.format(reservation.reserve_line()))
@@ -254,7 +254,7 @@ async def edit_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     await query.edit_message_text(
         text='Что меняем?:' + '\n\n' + update.effective_message.text,
-        reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown'
+        reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML'
     )
 
 
